@@ -1,8 +1,9 @@
 defaults:
-  - cost: default_cost_config    
-  - motion_primitives: default_motion_primitives_config 
+  - cost: default_cost_config
+  - motion_primitives: default_motion_primitives_config
   - planner: default_planner_config
   - controller: default_controller_config
   - vehicle: renault_twizy
   - noise: no_noise
   - scenario: overtake_scenario
+  - runtime: default_runtime_config
