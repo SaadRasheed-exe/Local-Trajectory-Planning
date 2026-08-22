@@ -205,15 +205,30 @@ class MPCController:
     def _interpolate_trajectory(self, trajectory: Trajectory, target_time_ms: int) -> EgoState:
         """
         Interpolates the trajectory to return an exact EgoState for a given target timestamp.
+        Beyond the planned horizon the last segment is extrapolated at constant velocity,
+        so late replans command continued motion instead of braking towards a frozen pose.
         """
         states = trajectory.states
-        
-        # 1. Boundary check: Return first or last state if outside of trajectory timeframe
+
+        # 1. Boundary check: Return first state before the trajectory starts
         if target_time_ms <= states[0].timestamp:
             return states[0].state
         if target_time_ms >= states[-1].timestamp:
-            return states[-1].state
-            
+            s_prev = states[-2].state if len(states) > 1 else states[-1].state
+            s_last = states[-1].state
+            dt_extrapolate_s = (target_time_ms - states[-1].timestamp) / 1000.0
+            speed = get_signed_magnitude(s_last.velocity, s_last.yaw)
+            return EgoState(
+                pos=Vector2D(
+                    x=s_last.pos.x + math.cos(s_last.yaw) * speed * dt_extrapolate_s,
+                    y=s_last.pos.y + math.sin(s_last.yaw) * speed * dt_extrapolate_s,
+                ),
+                velocity=s_last.velocity,
+                acceleration=s_last.acceleration,
+                yaw=s_last.yaw,
+                steering_angle=getattr(s_last, "steering_angle", getattr(s_prev, "steering_angle", 0.0)),
+            )
+
         # 2. Find the correct time slot for interpolation
         for i in range(len(states) - 1):
             s1 = states[i]

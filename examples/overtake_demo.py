@@ -1,3 +1,10 @@
+"""Standalone demo: dynamic bicycle model performing an overtake manoeuvre.
+
+Run directly from the repo root or from anywhere:
+
+    python examples/overtake_demo.py
+"""
+
 import math
 import sys
 from pathlib import Path
@@ -17,87 +24,6 @@ from utils.helper import get_magnitude, get_vector, global_to_ego_axis
 
 _MIN_SPEED_FOR_SLIP = 0.1
 
-
-# Role: fast stateless model for planner trajectory rollout.
-def kinematic_bicycle_model(
-    state: EgoStateStamped,
-    control: EgoInput,
-    dt_ms: int,
-    veh_cfg: DictConfig,
-    limit_steer_rate: bool = False,
-) -> EgoStateStamped:
-    """Fast stateless bicycle model intended for planner rollout."""
-
-    current_state = state.state
-    dt_sec = float(dt_ms) / 1000.0
-
-    max_acceleration = float(veh_cfg.max_acceleration)
-    max_deceleration = float(veh_cfg.max_deceleration)
-    if max_deceleration > 0.0:
-        max_deceleration = -max_deceleration
-    acceleration = max(
-        max_deceleration,
-        min(max_acceleration, float(control.acceleration)),
-    )
-
-    steering_angle = max(
-        -float(veh_cfg.max_steer),
-        min(float(veh_cfg.max_steer), float(control.steering_angle)),
-    )
-
-    if limit_steer_rate:
-        max_steering_delta = float(veh_cfg.max_steer_rate) * dt_sec
-        steering_angle = max(
-            current_state.steering_angle - max_steering_delta,
-            min(
-                current_state.steering_angle + max_steering_delta,
-                steering_angle,
-            ),
-        )
-
-    speed = get_magnitude(current_state.velocity)
-    next_speed = max(0.0, speed + acceleration * dt_sec)
-    average_speed = 0.5 * (speed + next_speed)
-
-    yaw = current_state.yaw
-    yaw_rate = average_speed * math.tan(steering_angle) / veh_cfg.wheel_base
-
-    if abs(yaw_rate) > 1e-9:
-        next_yaw = (yaw + yaw_rate * dt_sec + math.pi) % (2.0 * math.pi) - math.pi
-        turn_radius = average_speed / yaw_rate
-        next_x = current_state.pos.x + turn_radius * (
-            math.sin(next_yaw) - math.sin(yaw)
-        )
-        next_y = current_state.pos.y - turn_radius * (
-            math.cos(next_yaw) - math.cos(yaw)
-        )
-    else:
-        next_yaw = yaw
-        next_x = current_state.pos.x + average_speed * math.cos(yaw) * dt_sec
-        next_y = current_state.pos.y + average_speed * math.sin(yaw) * dt_sec
-
-    next_velocity = get_vector(next_speed, next_yaw)
-
-    lateral_acceleration = next_speed * yaw_rate
-    acceleration_x, acceleration_y, _ = global_to_ego_axis(
-        acceleration,
-        lateral_acceleration,
-        0.0,
-        0.0,
-        -next_yaw,
-    )
-    next_acceleration = Vector2D(x=acceleration_x, y=acceleration_y)
-
-    return EgoStateStamped(
-        timestamp=state.timestamp + dt_ms,
-        state=EgoState(
-            pos=Vector2D(x=next_x, y=next_y),
-            velocity=next_velocity,
-            acceleration=next_acceleration,
-            yaw=next_yaw,
-            steering_angle=steering_angle,
-        ),
-    )
 
 #  ─ OVERTAKE MANOEUVRE ─
 

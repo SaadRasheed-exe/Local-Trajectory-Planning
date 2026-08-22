@@ -11,19 +11,16 @@ from bokeh.palettes import Reds256
 
 from models.models import PlanResult, PredictedEnvironment, GoalRegion
 from omegaconf import DictConfig
+from utils.helper import get_bbox_corners
 
 def _get_bbox_corners(x: float, y: float, yaw: float, length: float, width: float) -> tuple[list[float], list[float]]:
     """
     Helper function: Calculates the corner points of a rotated rectangle for Bokeh (Patches).
-    Uses a 2D rotation matrix to shift the local corners into the global coordinate frame.
+    Wraps utils.helper.get_bbox_corners and converts its Vector2D corners into xs/ys lists.
     """
-    cos_y, sin_y = math.cos(yaw), math.sin(yaw)
-    hw, hl = width / 2.0, length / 2.0
-    corners_local = [(hl, hw), (hl, -hw), (-hl, -hw), (-hl, hw)]
-    xs, ys = [], []
-    for lx, ly in corners_local:
-        xs.append(x + (lx * cos_y - ly * sin_y))
-        ys.append(y + (lx * sin_y + ly * cos_y))
+    corners = get_bbox_corners(x, y, yaw, length, width)
+    xs = [corner.x for corner in corners]
+    ys = [corner.y for corner in corners]
     return xs, ys
 
 def visualize_search_tree(

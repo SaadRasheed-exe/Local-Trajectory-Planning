@@ -1,7 +1,8 @@
 from math import cos, pi, sin, hypot
-from typing import List, Optional, Tuple
-from configparser import ConfigParser
-from models.models import Vector2D, EgoStateStamped, Lane, GoalRegion
+from typing import List, Optional, Tuple, Union
+from models.models import Vector2D, EgoStateStamped, DynamicObjectStamped, Lane, GoalRegion
+
+MovingObject = Union[EgoStateStamped, DynamicObjectStamped]
 import copy
 from types import SimpleNamespace
 from omegaconf import OmegaConf
@@ -62,6 +63,11 @@ def check_line_intersection(p1: Vector2D, p2: Vector2D, p3: Vector2D, p4: Vector
     u = ((p3.x - p1.x) * d1.y - (p3.y - p1.y) * d1.x) / det
 
     return (0 <= t <= 1) and (0 <= u <= 1)
+
+
+def get_x_y_yaw_from_state(state: MovingObject) -> Tuple[float, float, float]:
+    """Extract (x, y, yaw) from any stamped moving-object state (ego or dynamic object)."""
+    return state.state.pos.x, state.state.pos.y, state.state.yaw
 
 
 def get_magnitude(vector: Vector2D) -> float:
@@ -159,6 +165,32 @@ def get_nearest_lane_center(ego_state: EgoStateStamped, lanes: List[Lane]) -> Tu
                 nearest_lane_yaw = yaw
 
     return nearest_lane_yaw, nearest_point
+
+
+def get_nearest_lane_end_distance(ego_state: EgoStateStamped, lanes: List[Lane]) -> float:
+    """
+    Distance [m] from the ego position to the end of its nearest lane.
+
+    The nearest lane is the one containing the globally closest centerline
+    point; 'end' is that lane's final centerline point.
+    """
+    nearest_lane = None
+    min_dist = float('inf')
+    for lane in lanes:
+        for point, _yaw in lane.centerline:
+            dist = hypot(ego_state.state.pos.x - point.x, ego_state.state.pos.y - point.y)
+            if dist < min_dist:
+                min_dist = dist
+                nearest_lane = lane
+
+    if nearest_lane is None or not nearest_lane.centerline:
+        return float('inf')
+
+    end_point = nearest_lane.centerline[-1][0]
+    return hypot(
+        ego_state.state.pos.x - end_point.x,
+        ego_state.state.pos.y - end_point.y,
+    )
 
 
 def get_goal_region(

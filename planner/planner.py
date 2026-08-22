@@ -18,19 +18,18 @@ from planner.cost.cost import calculate_node_cost, calculate_heuristic_cost, cal
 class IDProvider:
     def __init__(self, start_id=0):
         self.current_id = start_id
-        
+
     def get_id(self):
         result = self.current_id
         self.current_id += 1
         return result
 
 
-import math
-import time
-import heapq
-from typing import Optional
+# Minimum speed [m/s] used for motion-primitive expansion. Below this the
+# acceleration range degenerates to deadbeat braking (v -> 0), so a stopped
+# vehicle could never generate forward motion and the search would deadlock.
+_MIN_PLANNING_SPEED: float = 1.5
 
-# (Assuming other imports and models remain the same)
 
 import math
 import time
@@ -63,9 +62,11 @@ def plan(request: PlanningRequest, cfg: DictConfig, debug: bool = False) -> Plan
     open_nodes_pq: list[StateNode] = []
     end_nodes_pq: list[StateNode] = []
     id_provider = IDProvider()
-    
+
     max_depth = math.ceil(cfg.planner.horizon / cfg.planner.dt_sim)
     call_time = time.perf_counter()
+    exit_on_first = bool(getattr(cfg.planner, "exit_on_first_solution", False))
+    solution_found = False
 
     # --- Debug Tracking Variables ---
     total_generated_nodes = 1  
@@ -105,8 +106,17 @@ def plan(request: PlanningRequest, cfg: DictConfig, debug: bool = False) -> Plan
         prev_node = heapq.heappop(open_nodes_pq)
         prev_stamped_state = prev_node.state_stamped
 
+        raw_velocity = get_signed_magnitude(
+            prev_stamped_state.state.velocity, prev_stamped_state.state.yaw
+        )
+        # Allow the search to hypothesize forward motion from (near-)standstill;
+        # reverse driving keeps its signed speed untouched.
+        expansion_speed = (
+            max(raw_velocity, _MIN_PLANNING_SPEED) if raw_velocity >= 0.0 else raw_velocity
+        )
+
         motion_primitives = get_motion_primitives(
-            velocity=get_signed_magnitude(prev_stamped_state.state.velocity, prev_stamped_state.state.yaw),
+            velocity=expansion_speed,
             steering_angle=prev_stamped_state.state.steering_angle,
             veh_cfg=cfg.vehicle,
             velocity_limit=request.target_speed,
@@ -163,9 +173,18 @@ def plan(request: PlanningRequest, cfg: DictConfig, debug: bool = False) -> Plan
                  # Record Time to First Solution (TTFS)
                 if ttfs_sec is None:
                     ttfs_sec = time.perf_counter() - call_time
-        
+                    # Any terminal node (goal reached or full horizon) yields a
+                    # usable trajectory; stopping here keeps plan cycles short
+                    # and deterministic instead of optimizing until the budget
+                    # runs out.
+                    if exit_on_first:
+                        solution_found = True
+
         loop_stop_time = time.perf_counter()
         loop_duration = loop_stop_time - loop_start_time
+
+        if solution_found and exit_on_first:
+            break
 
         time_elapsed = loop_stop_time - call_time
         time_budget_sec = cfg.planner.max_compute_time / 1000.0

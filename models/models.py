@@ -180,4 +180,4 @@ class PlanResult:
     
     status_message: str                 # diagnostic info
 
-    debug_root_node: StateNode
+    debug_root_node: Optional[StateNode] = None

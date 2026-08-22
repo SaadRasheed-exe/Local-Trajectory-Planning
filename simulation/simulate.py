@@ -4,8 +4,8 @@ import copy
 from omegaconf import DictConfig
 from models.models import EgoStateStamped, EgoState, Environment, Vector2D, DynamicObjectStamped
 from utils.helper import get_vector, get_signed_magnitude
-from motion_planner.bicylce_model2 import DynamicBicycleModel
-from motion.motion_prediction import predict_motion_constant_velocity
+from motion.bicycle import DynamicBicycleModel
+from prediction.predictivity import predict_motion_constant_velocity
 import numpy as np
 
 

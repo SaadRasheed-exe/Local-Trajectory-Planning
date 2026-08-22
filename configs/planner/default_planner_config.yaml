@@ -11,6 +11,9 @@ dt_output: 1000            # Output resolution (multiple of dt_sim) [ms]
 # ---------------------------------------------------------
 max_compute_time: 5000     # Time budget [ms]
 extract_path_time: 5
+exit_on_first_solution: true  # Stop searching as soon as one goal-reaching path exists
+                              # (deterministic, fast cycles; set false to use the full
+                              # budget for post-solution cost optimization)
 
 # ---------------------------------------------------------
 # Goal Region

@@ -1,18 +1,50 @@
 import heapq
 from math import pi, cos, sin, hypot
-from utils.helper import get_bbox_corners, get_magnitude, get_vector, get_signed_magnitude
-from typing import Tuple, List, Optional, overload, Union, Sequence
+from utils.helper import (
+    get_bbox_corners,
+    get_vector,
+    get_signed_magnitude,
+    get_x_y_yaw_from_state,
+    MovingObject,
+)
+from typing import Tuple, List, Optional, overload, Sequence
 from models.models import (
     EgoState, EgoStateStamped, DynamicObject, DynamicObjectStamped,
-    Lane, Environment, PredictedEnvironment, Vector2D
+    Environment, Lane, PredictedEnvironment, Vector2D
 )
 from shapely.geometry import Polygon
 
-MovingObject = Union[EgoStateStamped, DynamicObjectStamped]
 
-def get_x_y_yaw_from_state(state: MovingObject) -> Tuple[float, float, float]:
-    """Helper function to extract standard pose information from any moving object."""
-    return state.state.pos.x, state.state.pos.y, state.state.yaw
+def get_colliding_object_ids(
+    ego_state: EgoStateStamped,
+    environment: Environment,
+    ego_length: float,
+    ego_width: float,
+    ego_rear_to_wheel: float,
+) -> List[int]:
+    """
+    Return the ids of all objects whose bounding box currently intersects the
+    ego vehicle's bounding box.
+
+    Reference-point convention matches _ego_object_distance: the ego state
+    position is at the rear axle (shifted to the geometric center here), while
+    object positions are their geometric centers.
+    """
+    ego_x, ego_y, ego_yaw = get_x_y_yaw_from_state(ego_state)
+    ego_x_center = ego_x + (ego_length / 2.0 - ego_rear_to_wheel) * cos(ego_yaw)
+    ego_y_center = ego_y + (ego_length / 2.0 - ego_rear_to_wheel) * sin(ego_yaw)
+
+    ego_corners = get_bbox_corners(ego_x_center, ego_y_center, ego_yaw, ego_length, ego_width)
+    ego_polygon = Polygon([(corner.x, corner.y) for corner in ego_corners])
+
+    colliding_ids: List[int] = []
+    for obj in environment.objects:
+        obj_x, obj_y, obj_yaw = get_x_y_yaw_from_state(obj)
+        obj_corners = get_bbox_corners(obj_x, obj_y, obj_yaw, obj.state.length, obj.state.width)
+        obj_polygon = Polygon([(corner.x, corner.y) for corner in obj_corners])
+        if ego_polygon.intersects(obj_polygon):
+            colliding_ids.append(obj.state.id)
+    return colliding_ids
 
 
 def _ego_object_distance(
