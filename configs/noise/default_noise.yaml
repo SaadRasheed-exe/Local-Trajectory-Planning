@@ -1,0 +1,15 @@
+ego:
+  noise_level: 0.2
+  pos_x_std: 0.5
+  pos_y_std: 0.5
+  yaw_std_deg: 2.0
+  velocity_std_kmh: 1.8
+  acceleration_std: 0.2
+
+environment:
+  noise_level: 0.2
+  pos_x_std: 0.5
+  pos_y_std: 0.5
+  yaw_std_deg: 2.0
+  velocity_std_kmh: 1.8
+  acceleration_std: 0.2

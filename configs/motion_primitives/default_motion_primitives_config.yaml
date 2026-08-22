@@ -1,0 +1,35 @@
+# ---------------------------------------------------------
+# Dynamic & Safety Limits
+# ---------------------------------------------------------
+# Maximum allowable lateral acceleration in m/s². Limits steering at higher speeds.
+max_a_lat                   : 3.0
+
+# Upper tolerance (m/s) above the velocity limit. Exceeding this triggers hard braking.
+velocity_limit_tolerance    : 0.55
+
+# Threshold (m/s) defining the docking zone to smoothly transition into deadbeat control.
+velocity_limit_thresh       : 0.55
+
+# Absolute physical maximum acceleration bound (> 0) in m/s².
+acceleration_limit          : 2
+
+# Absolute physical maximum deceleration bound (< 0) in m/s².
+deceleration_limit          : -2
+
+# ---------------------------------------------------------
+# Comfort & Jerk Limits
+# ---------------------------------------------------------
+# Maximum allowed rate of increasing acceleration (> 0) in m/s³.
+positiv_jerk_limit          : 1
+
+# Maximum allowed rate of decreasing acceleration (< 0) in m/s³.
+negativ_jerk_limit          : -2
+
+# ---------------------------------------------------------
+# Motion Primitive Sampling Splits
+# ---------------------------------------------------------
+# Percentages to sample the feasible acceleration range (0 = max decel, 100 = max accel).
+acceleration_split          : [0, 50, 100] #[0, 25, 50, 75, 100]
+
+# Percentages to sample the feasible steering range (-100 = max right, 0 = straight, 100 = max left).
+steering_angle_split        : [-100, -25, 0, 25, 100] #[-100, -50, -25, 0, 25, 50, 100]

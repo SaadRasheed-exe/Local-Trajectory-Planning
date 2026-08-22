@@ -1,0 +1,25 @@
+# Steering
+max_steer: 0.7            # max steering angle
+max_steer_rate: 0.7       # max steering rate
+
+# Dimensions
+width: 1.381              # Vehicle width (m)
+length: 2.338             # Vehicle length (m)
+rear_to_wheel: 0.339      # Distance rear to axel (m)
+track: 1.094              # Vehicle track (m)
+wheel_base: 1.686         # Wheel base (m)
+wheel_length: 0.531       # Wheel length (m)
+wheel_width: 0.125        # Wheel width (m)
+
+# Mass & Inertia
+m: 633                    # Vehicle mass (kg)
+Iz: 430.166               # Moment of inertia (kg*m^2)
+lf: 0.9442                # Front axel to CG (m)
+lr: 0.7417                # Rear axel to CG (m)
+
+# Dynamics & Tires
+Cf: 65715.0               # Cornering stiffness front (N/rad) [calculated: 2*32857.5]
+Cr: 65715.0               # Cornering stiffness rear (N/rad) [calculated: 2*32857.5]
+max_acceleration: 2.0     # max acceleration
+max_deceleration: -2.0     # max deceleration
+mu: 1.0                   # tire-road friction coefficient 

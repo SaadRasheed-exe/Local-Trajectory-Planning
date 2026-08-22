@@ -1,0 +1,65 @@
+lane_defaults:
+  width: 4.0              # meters
+  length: 2000.0          # meters
+  speed_limit_kmh: 50.0   # km/h
+
+object_defaults:
+  type: VEHICLE
+  width: 2.0              # meters
+  length: 4.50             # meters
+  timestamp: 0            # milliseconds
+  ax: 0.0                 # m/s^2
+  ay: 0.0                 # m/s^2
+
+lanes:
+  lane1:
+    id: 1
+    y: 2.0                # meters
+    yaw: 0.0              # degrees
+  lane2:
+    id: 2
+    y: 6.0                # meters
+    yaw: 180.0            # degrees
+
+objects:
+
+  obs1:
+    id: 1
+    pos:
+      x: 100.0            # meters
+      y: 2.0              # meters
+    yaw: 180.0            # degrees
+    speed_kmh: 10.0       # km/h
+
+  #obs2:
+  #  id: 2
+  #  pos:
+  #    x: 105.0            # meters
+  #    y: 2.0              # meters
+  #  yaw: 180.0            # degrees
+  #  speed_kmh: 10.0       # km/h
+#
+  #obs3:
+  #  id: 3
+  #  pos:
+  #    x: 110.0            # meters
+  #    y: 2.0              # meters
+  #  yaw: 180.0            # degrees
+  #  speed_kmh: 10.0       # km/h
+#
+  #obs4:
+  #  id: 4
+  #  pos:
+  #    x: 115.0            # meters
+  #    y: 2.0              # meters
+  #  yaw: 180.0            # degrees
+  #  speed_kmh: 10.0       # km/h
+#
+  #obs5:
+  #  id: 5
+  #  pos:
+  #    x: 120.0            # meters
+  #    y: 2.0              # meters
+  #  yaw: 180.0            # degrees
+  #  speed_kmh: 10.0       # km/h
+#

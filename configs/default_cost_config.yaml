@@ -1,0 +1,51 @@
+# ---------------------------------------------------------
+# A* Global Search Weights
+# ---------------------------------------------------------
+search:
+  w_g: 1.0                     # Weight for accumulated path costs (g-cost)
+  w_h: 0.3                     # Weight for heuristic cost (h-cost)
+
+# ---------------------------------------------------------
+# Transition Cost Multipliers 
+# ---------------------------------------------------------
+transition_weights:
+  jerk_long: 2.0               # Multiplier for longitudinal jerk
+  jerk_lat: 5.0                # Multiplier for lateral jerk
+  accel_long: 1.5              # Multiplier for longitudinal acceleration
+  accel_lat: 3.5               # Multiplier for lateral acceleration
+  speed: 1.0                   # Multiplier for the total speed cost
+  objects: 2.0                 # Multiplier for the total object cost
+  lane_center: 4.0             # Multiplier for lateral deviation from lane center
+  lane_yaw: 15.0               # Multiplier for heading error relative to lane direction
+  lane_occlusion: 50.0         # Multiplier for leaving the drivable road area
+  opposite_lane: 1.0           # Multiplier for the oncoming traffic penalty
+
+# ---------------------------------------------------------
+# Function-Specific Parameters
+# ---------------------------------------------------------
+cost_target_speed_delta:
+  weight_underspeed: 0.3       # Linear penalty for driving too slow
+  weight_overspeed: 10.0       # Base weight for driving too fast
+  exp_growth_factor: 1.5       # Steepness of the overspeed exponential curve
+  max_penalty: 1000000.0       # Absolute maximum cost limit (1e6)
+
+cost_objects_force_field:
+  resolution_ms: 10                     # Interpolation resolution for the collision checker [ms]
+  ego_safe_margin: 0.7                  # Margin to inflate the ego vehicle's bounding box [m]
+  obj_safe_margin: 0.7                  # Base margin to inflate dynamic object bounding boxes [m]
+  speed_expansion_factor_front: 1.8     # Multiplier to extend object/ego force field on the front based on speed [s]
+  speed_expansion_factor_rear: 0.2      # Multiplier to extend object/ego force field on the rear based on speed [s]
+  accel_expansion_factor_front: 0.5     # Multiplier to extend object/ego force field based on acceleration (front) [s^2]
+  accel_expansion_factor_rear: 0.1      # Multiplier to extend object/ego force field based on acceleration (rear) [s^2]
+  weight_ff_high: 100.0                 # High penalty weight for intersecting high force field
+  decay_factor_high: 2.0                # Decay rate (lambda) for the exponential cost within the FFH
+  weight_ff_low: 5.0                    # Base proximity weight outside the high force field
+  d_ffl: 20.0                           # Maximum distance [m] where the FFL exerts influence (quadratic decay to 0)
+  lse_alpha: 1.0                        # Alpha scaling parameter for the LogSumExp aggregation
+  dist_epsilon: 0.1                     # Small value to prevent division by zero
+
+cost_lane_occlusion:
+  exp_growth_factor: 5.0       # Steepness of the off-road exponential curve
+
+cost_opposite_lane:
+  penalty: 100.0              # Penalty for driving on the oncoming lane

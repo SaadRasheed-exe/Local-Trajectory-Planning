@@ -1,0 +1,15 @@
+# MPC tuning
+
+horizon: 1500
+dt: 100
+Q_x: 50.0
+Q_y: 50.0
+Q_yaw: 50.0
+Q_v: 2.0
+Q_delta: 0.0
+R_a: 0.01
+R_sr: 0.01
+R_da: 0.1
+R_dsr: 0.05
+max_a_lat: 3.0
+R_alat: 5.0
