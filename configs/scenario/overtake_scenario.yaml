@@ -40,6 +40,6 @@ objects:
 
 
 goal:
-  horizon: 3000           # milliseconds
+  horizon: 8000           # milliseconds - kept beyond single-plan reach; rolling goal is an attractor, never a terminus
   length: 5.0             # meters
   width: 5.0              # meters

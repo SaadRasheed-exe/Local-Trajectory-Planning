@@ -1,4 +1,4 @@
-from math import cos, pi, sin, hypot
+from math import atan2, cos, pi, sin, hypot
 from typing import List, Optional, Tuple, Union
 from models.models import Vector2D, EgoStateStamped, DynamicObjectStamped, Lane, GoalRegion
 
@@ -203,8 +203,38 @@ def get_goal_region(
 ) -> GoalRegion:
     """
     Get the goal region which is horizon seconds ahead in the same lane.
+
+    Lanes whose direction opposes the ego's current heading are ignored when
+    placing the rolling goal, otherwise the anchor flips behind the vehicle
+    during lateral maneuvers on two-way roads.
     """
-    nearest_lane_yaw, nearest_lane_center = get_nearest_lane_center(curr_ego_state, lanes)
+    ego_vel = curr_ego_state.state.velocity
+
+    # Direction filter: compare each lane's representative yaw against ego heading.
+    def _lane_yaw(lane: Lane) -> float:
+        p0, _ = lane.centerline[0]
+        p1, _ = lane.centerline[min(1, len(lane.centerline) - 1)]
+        return atan2(p1.y - p0.y, p1.x - p0.x)
+
+    aligned = [
+        lane for lane in lanes
+        if lane.centerline and cos(_lane_yaw(lane) - atan2(ego_vel.y, ego_vel.x)) > 0.25
+    ]
+    anchor_lanes = aligned if aligned else lanes
+
+    min_dist = float('inf')
+    nearest_lane_yaw, nearest_lane_center = 0.0, Vector2D(x=0.0, y=0.0)
+    found = False
+    for lane in anchor_lanes:
+        for point, yaw in lane.centerline:
+            dist = hypot(curr_ego_state.state.pos.x - point.x, curr_ego_state.state.pos.y - point.y)
+            if dist < min_dist:
+                min_dist = dist
+                nearest_lane_yaw = yaw
+                nearest_lane_center = point
+                found = True
+    if not found:
+        nearest_lane_yaw, nearest_lane_center = get_nearest_lane_center(curr_ego_state, lanes)
 
     vel = curr_ego_state.state.velocity
     vel_magnitude = hypot(vel.x, vel.y)
