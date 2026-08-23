@@ -161,8 +161,8 @@ def _compute_control_command(
     cfg: DictConfig,
 ) -> Tuple[float, float]:
     """Returns (acceleration, steer_rate); falls back to emergency braking."""
-    if trajectory is None:
-        print("No trajectory available. Emergency braking.")
+    if trajectory is None or ego_state.timestamp >= trajectory.states[-1].timestamp:
+        print("No usable trajectory (none available or plan exhausted). Emergency braking.")
         return _brake_command(cfg)
     try:
         acc, steer_rate = controller.compute_control(ego_state, trajectory)[0]
