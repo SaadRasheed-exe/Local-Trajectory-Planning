@@ -29,7 +29,7 @@ negativ_jerk_limit          : -2
 # Motion Primitive Sampling Splits
 # ---------------------------------------------------------
 # Percentages to sample the feasible acceleration range (0 = max decel, 100 = max accel).
-acceleration_split          : [0, 50, 100] #[0, 25, 50, 75, 100]
+acceleration_split          : [0, 100] #[0, 25, 50, 75, 100]
 
 # Percentages to sample the feasible steering range (-100 = max right, 0 = straight, 100 = max left).
-steering_angle_split        : [-100, -25, 0, 25, 100] #[-100, -50, -25, 0, 25, 50, 100]
+steering_angle_split        : [-100, 0, 100] #[-100, -50, -25, 0, 25, 50, 100]

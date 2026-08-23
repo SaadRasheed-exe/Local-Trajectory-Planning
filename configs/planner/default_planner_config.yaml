@@ -1,15 +1,15 @@
 # ---------------------------------------------------------
 # Timing & Resolution 
 # ---------------------------------------------------------
-horizon: 7000             # Planning horizon [ms]
-dt_sim: 1000                # Internal integration step via kinematic model [ms]
+horizon: 6000             # Planning horizon [ms]
+dt_sim: 500                # Internal integration step via kinematic model [ms]
 #dt_interpolation: 100      # Internal interpolation resolution for calculating object distances [ms]
-dt_output: 1000            # Output resolution (multiple of dt_sim) [ms]
+dt_output: 500            # Output resolution (multiple of dt_sim) [ms]
 
 # ---------------------------------------------------------
 # Constraints
 # ---------------------------------------------------------
-max_compute_time: 5000     # Time budget [ms]
+max_compute_time: 2000     # Time budget [ms]
 extract_path_time: 5
 exit_on_first_solution: true  # Stop searching as soon as one goal-reaching path exists
                               # (deterministic, fast cycles; set false to use the full
