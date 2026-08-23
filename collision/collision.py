@@ -286,7 +286,33 @@ def get_distance_to_objects(
     Checks the continuous interval between two planning steps for collisions.
     Calculates and returns the aggregated minimum distances to all objects.
     """
-    
+
+    # Coarse rejection: if every predicted object state is provably beyond the
+    # influence range of both interval endpoints, no distance or collision is
+    # possible and the expensive sweep can be skipped entirely.
+    ego_radius = (ego_length**2 + ego_width**2) ** 0.5 / 2.0
+    influence_range = calc_exact_distance + 2.0 * ego_radius
+    endpoints = (
+        (previous_ego.state.pos.x, previous_ego.state.pos.y),
+        (current_ego.state.pos.x, current_ego.state.pos.y),
+    )
+    any_object_in_range = False
+    for obj_states_all in predicted_env.objects.values():
+        for obj_state in obj_states_all:
+            for ex, ey in endpoints:
+                if (
+                    abs(obj_state.state.pos.x - ex) <= influence_range
+                    and abs(obj_state.state.pos.y - ey) <= influence_range
+                ):
+                    any_object_in_range = True
+                    break
+            if any_object_in_range:
+                break
+        if any_object_in_range:
+            break
+    if not any_object_in_range:
+        return [], False
+
     # Sub-divide the planning step into smaller intervals to detect fast-moving intersections
     interpolated_ego_states = _interpolate_states(previous_ego, current_ego, resolution_ms)
 
@@ -408,11 +434,27 @@ def get_ego_lane_info(
         if not lane.centerline:
             continue
             
-        # Quick closest-point search for spatial rejection
+        # Quick closest-point search for spatial rejection.
+        # Coarse-to-fine: stride scan first, then refine around the best hit
+        # (centerlines are densely sampled; a full scan per node is wasteful).
+        centerline_len = len(lane.centerline)
+        stride = max(1, centerline_len // 64)
         closest_sq_dist = float('inf')
         closest_idx = -1
-        
-        for i, (p, _) in enumerate(lane.centerline):
+
+        for i in range(0, centerline_len, stride):
+            p = lane.centerline[i][0]
+            dx = p.x - ego_center_x
+            dy = p.y - ego_center_y
+            sq_dist = dx * dx + dy * dy
+            if sq_dist < closest_sq_dist:
+                closest_sq_dist = sq_dist
+                closest_idx = i
+
+        refine_start = max(0, closest_idx - stride)
+        refine_end = min(centerline_len, closest_idx + stride + 1)
+        for i in range(refine_start, refine_end):
+            p = lane.centerline[i][0]
             dx = p.x - ego_center_x
             dy = p.y - ego_center_y
             sq_dist = dx * dx + dy * dy
