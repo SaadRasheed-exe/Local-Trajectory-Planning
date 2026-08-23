@@ -1,6 +1,7 @@
 from .environment import create_environment
 from math import atan2, pi
 import copy
+import threading
 from omegaconf import DictConfig
 from models.models import EgoStateStamped, EgoState, Environment, Vector2D, DynamicObjectStamped
 from utils.helper import get_vector, get_signed_magnitude
@@ -31,9 +32,14 @@ class Simulation:
         self.ego_history = [self.ego_state]
         self.obj_history = [self.curr_env.objects]
 
-    
+        # Guards ego_state / curr_env mutations (step) against concurrent
+        # readers (planner thread, renderer) that deepcopy the state.
+        self.state_lock = threading.Lock()
+
+
     def get_ego_state(self, noise_level: float | None = None) -> EgoStateStamped:
-        noisy_state = copy.deepcopy(self.ego_state)
+        with self.state_lock:
+            noisy_state = copy.deepcopy(self.ego_state)
 
         if noise_level is None:
             noise_level = float(self.ego_noise_cfg.noise_level)
@@ -67,7 +73,8 @@ class Simulation:
 
 
     def get_noisy_environment(self, noise_level: float | None = None) -> Environment:
-        noisy_env = copy.deepcopy(self.curr_env)
+        with self.state_lock:
+            noisy_env = copy.deepcopy(self.curr_env)
 
         if noise_level is None:
             noise_level = float(self.env_noise_cfg.noise_level)
@@ -114,9 +121,10 @@ class Simulation:
 
 
     def step(self, acc: float, steer_rate: float, dt: int) -> None:
-        self.ego_state.state = self.bicycle_model.step(acc, steer_rate, dt)
-        self.ego_state.timestamp += dt
-        self.ego_history.append(copy.deepcopy(self.ego_state))
+        with self.state_lock:
+            self.ego_state.state = self.bicycle_model.step(acc, steer_rate, dt)
+            self.ego_state.timestamp += dt
+            self.ego_history.append(copy.deepcopy(self.ego_state))
 
-        self.curr_env.objects = predict_motion_constant_velocity(self.curr_env.objects, prediction_horizon=dt, dt=dt, last_only=True)
-        self.obj_history.append(copy.deepcopy(self.curr_env.objects))
+            self.curr_env.objects = predict_motion_constant_velocity(self.curr_env.objects, prediction_horizon=dt, dt=dt, last_only=True)
+            self.obj_history.append(copy.deepcopy(self.curr_env.objects))

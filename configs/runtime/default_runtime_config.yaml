@@ -7,3 +7,6 @@ debug: false              # planner KPIs, search-tree HTML export, object-distan
 sim_step_ms: 50           # control / simulation tick [ms]
 plan_execution_ms: 4000   # duration one plan is followed before replanning [ms] (sequential mode only)
 max_duration_ms: -1       # stop the run after this much simulated time [-1 = run until Ctrl-C] (both modes)
+
+planner_period_ms: 50     # minimum wall-clock pause between planning iterations [ms] (threaded mode only).
+                          # Without it the planner hogs the GIL and starves the renderer.

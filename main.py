@@ -7,7 +7,8 @@ every planning loop.
 Runtime behavior is controlled by configs/runtime/default_runtime_config.yaml:
 
     mode: sequential  - plan, follow the plan for plan_execution_ms, then replan
-    mode: threaded    - real-time controller thread plus continuous planner loop
+    mode: threaded    - real-time controller thread plus a planner running in
+                        its own process (keeps the renderer responsive)
 
     debug: true       - planner KPIs, search-tree HTML export, object-distance logging
 
@@ -21,6 +22,7 @@ Examples:
     python main.py runtime.mode=threaded runtime.debug=true
 """
 
+import multiprocessing
 import threading
 import time
 from typing import Optional, Tuple
@@ -119,10 +121,8 @@ def _build_goal_region(
     )
 
 
-def _prepare_planning(sim: Simulation, cfg: DictConfig):
-    """Fetch world state, build predictions and assemble a PlanningRequest."""
-    curr_env = sim.get_environment()
-    ego_state = sim.get_ego_state()
+def _build_planning_pipeline(curr_env, ego_state: EgoStateStamped, cfg: DictConfig):
+    """Build predictions and assemble a PlanningRequest from a world snapshot."""
     pred_env = _build_predicted_environment(curr_env, cfg)
 
     target_speed = _get_target_speed(ego_state, curr_env, cfg)
@@ -134,6 +134,14 @@ def _prepare_planning(sim: Simulation, cfg: DictConfig):
         target_speed=target_speed,
         environment=pred_env,
     )
+    return pred_env, goal_region, request
+
+
+def _prepare_planning(sim: Simulation, cfg: DictConfig):
+    """Fetch world state, build predictions and assemble a PlanningRequest."""
+    curr_env = sim.get_environment()
+    ego_state = sim.get_ego_state()
+    pred_env, goal_region, request = _build_planning_pipeline(curr_env, ego_state, cfg)
     return curr_env, ego_state, pred_env, goal_region, request
 
 
@@ -378,10 +386,59 @@ def _controller_worker(
             time.sleep(remaining_s)
 
 
+def _planner_process(pipe, cfg: DictConfig) -> None:
+    """
+    Dedicated planning process for threaded mode.
+
+    Runs in its own interpreter so its GIL cannot starve the renderer thread.
+    Protocol over the duplex pipe:
+
+        -> {'type': 'req'}                       ask the renderer for a snapshot
+        <- {'type': 'snapshot', 'ego': ..., 'env': ...}
+        -> {'type': 'traj', 'success', 'status_message', 'trajectory'}
+        <- {'type': 'stop'}                      shutdown request
+    """
+    period_s = max(int(cfg.runtime.get("planner_period_ms", 50)), 0) / 1000.0
+    previous_ego = None
+    while True:
+        try:
+            pipe.send({"type": "req"})
+            msg = pipe.recv()
+        except (EOFError, BrokenPipeError, OSError, KeyboardInterrupt):
+            return
+
+        if not isinstance(msg, dict) or msg.get("type") != "snapshot":
+            return  # 'stop' or dead peer
+
+        ego_state = msg["ego"]
+        curr_env = msg["env"]
+
+        pred_env, goal_region, request = _build_planning_pipeline(curr_env, ego_state, cfg)
+        plan_result = plan(request, cfg, debug=bool(cfg.runtime.debug))
+
+        try:
+            pipe.send({
+                "type": "traj",
+                "success": bool(plan_result.success),
+                "status_message": plan_result.status_message,
+                "trajectory": plan_result.trajectory if plan_result.success else None,
+            })
+        except (BrokenPipeError, OSError):
+            return
+
+        if cfg.runtime.debug and previous_ego is not None:
+            _log_object_distances(previous_ego, ego_state, pred_env, cfg)
+            _export_search_tree(plan_result, pred_env, goal_region, cfg)
+        previous_ego = ego_state
+
+        if period_s > 0:
+            time.sleep(period_s)
+
+
 def _run_threaded(sim: Simulation, controller: MPCController, cfg: DictConfig) -> None:
     shared_state = SharedState()
 
-    # Seed the first trajectory synchronously, before the controller starts.
+    # Seed the first trajectory synchronously, before any thread starts.
     # Otherwise the worker emergency-brakes while the first (slow) plan runs,
     # the ego comes to a standstill, and the planner can no longer expand
     # motion primitives from v = 0 - a permanent deadlock.
@@ -393,62 +450,104 @@ def _run_threaded(sim: Simulation, controller: MPCController, cfg: DictConfig) -
     else:
         print(f"Initial plan failed: {seed_result.status_message}. Starting without trajectory.")
 
+    lanes = curr_env.lanes
+
+    # Planner runs in a separate process (own GIL): a Python-heavy planning
+    # loop inside this interpreter starves the renderer ~70x through GIL
+    # handoff. Forked before the controller thread starts (fork-safety).
+    parent_conn, child_conn = multiprocessing.get_context("fork").Pipe(duplex=True)
+    planner_proc = multiprocessing.get_context("fork").Process(
+        target=_planner_process,
+        args=(child_conn, cfg),
+        daemon=True,
+    )
+    planner_proc.start()
+    child_conn.close()  # this process only talks over its own end
+
     ctrl_thread = threading.Thread(
         target=_controller_worker,
-        args=(sim, controller, shared_state, cfg, curr_env.lanes),
+        args=(sim, controller, shared_state, cfg, lanes),
         daemon=True,
     )
     ctrl_thread.start()
 
-    previous_ego = sim.get_ego_state()
-    start_timestamp = previous_ego.timestamp
+    start_timestamp = sim.get_ego_state().timestamp
     max_duration_ms = int(cfg.runtime.max_duration_ms)
+    sim_step_ms = int(cfg.runtime.sim_step_ms)
+    latest_trajectory = shared_state.trajectory  # seed result, for display
+    planner_alive = True
+
+    # Main thread: dedicated render loop at sim-tick cadence. Drawing stays on
+    # the main thread (matplotlib is not thread-safe) while the controller
+    # thread steps physics and the planner process computes trajectories.
     try:
         while True:
             if shared_state.stop_reason is not None:
                 print(f"{shared_state.stop_reason} Shutting down.")
                 break
 
-            curr_env, ego_state, pred_env, goal_region, request = _prepare_planning(sim, cfg)
+            loop_start = time.perf_counter()
 
-            plan_result = plan(request, cfg, debug=bool(cfg.runtime.debug))
-            if plan_result.success and plan_result.trajectory is not None:
-                with shared_state.lock:
-                    shared_state.trajectory = plan_result.trajectory
-            else:
-                # Keep following the last trajectory; the worker brakes once it runs out.
-                print(f"No path found: {plan_result.status_message}. Following last trajectory.")
+            ego_state = sim.get_ego_state()
+            env_frame = sim.get_environment()
+
+            # Serve planner requests / collect results without blocking.
+            if planner_alive:
+                try:
+                    while parent_conn.poll():
+                        msg = parent_conn.recv()
+                        if msg["type"] == "req":
+                            parent_conn.send({
+                                "type": "snapshot",
+                                "ego": ego_state,
+                                "env": env_frame,
+                            })
+                        elif msg["type"] == "traj":
+                            if msg["success"] and msg["trajectory"] is not None:
+                                latest_trajectory = msg["trajectory"]
+                                with shared_state.lock:
+                                    shared_state.trajectory = msg["trajectory"]
+                            else:
+                                print(f"No path found: {msg['status_message']}. Following last trajectory.")
+                except (EOFError, BrokenPipeError, OSError):
+                    print("Planner process died; continuing on the last trajectory.")
+                    planner_alive = False
+
+            with shared_state.lock:
+                trajectory = shared_state.trajectory
+
+            visualize_scene(
+                env=env_frame,
+                ego=ego_state,
+                vehicle_params=cfg.vehicle,
+                trajectory=trajectory if trajectory is not None else latest_trajectory,
+                goal_region=_build_goal_region(
+                    lanes,
+                    ego_state,
+                    cfg,
+                    _get_target_speed(ego_state, env_frame, cfg),
+                ),
+                path=sim.ego_history,
+            )
 
             if max_duration_ms > 0 and (ego_state.timestamp - start_timestamp) >= max_duration_ms:
                 print(f"Simulation duration limit reached ({max_duration_ms} ms). Shutting down.")
                 break
 
-            if cfg.runtime.debug:
-                _log_object_distances(previous_ego, ego_state, pred_env, cfg)
-                _export_search_tree(plan_result, pred_env, goal_region, cfg)
-            previous_ego = ego_state
-
-            # Display goal: re-anchored to the freshest pose so the box slides
-            # ahead of the vehicle between planning iterations.
-            display_ego = sim.get_ego_state()
-            visualize_scene(
-                env=curr_env,
-                ego=ego_state,
-                vehicle_params=cfg.vehicle,
-                trajectory=plan_result.trajectory,
-                goal_region=_build_goal_region(
-                    curr_env.lanes,
-                    display_ego,
-                    cfg,
-                    _get_target_speed(display_ego, curr_env, cfg),
-                ),
-                path=sim.ego_history,
-            )
+            _pace_real_time(loop_start, sim_step_ms)
     except KeyboardInterrupt:
         print("Shutting down simulation...")
     finally:
         shared_state.is_running = False
-        ctrl_thread.join(timeout=1.0)
+        try:
+            parent_conn.send({"type": "stop"})
+        except (BrokenPipeError, OSError):
+            pass
+        planner_proc.join(timeout=1.5)
+        if planner_proc.is_alive():
+            planner_proc.terminate()
+            planner_proc.join(timeout=1.0)
+        ctrl_thread.join(timeout=2.0)
 
 
 # ---------------------------------------------------------------------------
