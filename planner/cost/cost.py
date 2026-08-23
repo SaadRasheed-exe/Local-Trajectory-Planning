@@ -113,7 +113,7 @@ def calculate_node_cost(
     speed_cost_raw = cost_target_speed_delta(
         curr_state=curr_state, 
         target_speed=request.target_speed,
-        **cost_cfg.cost_target_speed_delta
+        **vars(cost_cfg.cost_target_speed_delta)
     )
     detailed_costs["speed"] = weights.speed * speed_cost_raw
     
@@ -145,11 +145,11 @@ def calculate_node_cost(
     
     raw_cost_occ = cost_lane_occlusion(
         lane_occlusion=occlusion, 
-        **cost_cfg.cost_lane_occlusion
+        **vars(cost_cfg.cost_lane_occlusion)
     )
     raw_cost_opp = cost_opposite_lane(
         opposite_lane=is_opposite, 
-        **cost_cfg.cost_opposite_lane
+        **vars(cost_cfg.cost_opposite_lane)
     )
     
     detailed_costs["lane_center"] = weights.lane_center * raw_cost_center

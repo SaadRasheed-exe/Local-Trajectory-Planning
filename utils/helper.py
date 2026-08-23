@@ -229,7 +229,7 @@ def convert_cfg_to_native(cfg_obj):
     Konvertiert OmegaConf rekursiv in native SimpleNamespace-Objekte.
     Dies ermöglicht C-Level Zugriffsgeschwindigkeiten auf Attribute.
     """
-    if hasattr(cfg_obj, "_is_dict"):
+    if OmegaConf.is_config(cfg_obj):
         d = OmegaConf.to_container(cfg_obj, resolve=True)
     else:
         d = cfg_obj
