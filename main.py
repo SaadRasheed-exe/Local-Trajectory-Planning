@@ -31,9 +31,11 @@ import hydra
 from omegaconf import DictConfig, OmegaConf
 
 from collision.collision import (
+    build_lane_polygons,
     get_colliding_object_ids,
     get_distance_to_objects,
     get_ego_lane_info,
+    has_exited_lanes,
 )
 from controllers.controllers import MPCController
 from models.models import EgoStateStamped, Environment, PlanningRequest, PredictedEnvironment, Trajectory
@@ -184,13 +186,15 @@ def _stop_reason_for_state(
     ego_state: EgoStateStamped,
     environment: Environment,
     lanes,
+    lane_polygons,
     cfg: DictConfig,
 ) -> Optional[str]:
     """
     Returns a shutdown reason if the run must stop now, else None.
 
-    Stop conditions: the ego bounding box intersects another vehicle, or the
-    ego has reached the end of its lane. Evaluated once per simulation step.
+    Stop conditions: the ego bounding box intersects another vehicle, the ego
+    bounding box is completely off the drivable area (all lanes), or the ego
+    has reached the end of its lane. Evaluated once per simulation step.
     """
     colliding_ids = get_colliding_object_ids(
         ego_state=ego_state,
@@ -201,6 +205,15 @@ def _stop_reason_for_state(
     )
     if colliding_ids:
         return f"Collision with object(s) {colliding_ids}."
+
+    if has_exited_lanes(
+        ego_state=ego_state,
+        lane_polygons=lane_polygons,
+        ego_length=float(cfg.vehicle.length),
+        ego_width=float(cfg.vehicle.width),
+        ego_rear_to_wheel=float(cfg.vehicle.rear_to_wheel),
+    ):
+        return "Ego fully exited the lane boundaries."
 
     if get_nearest_lane_end_distance(ego_state, lanes) <= LANE_END_STOP_MARGIN_M:
         return "Lane end reached."
@@ -255,6 +268,8 @@ def _run_sequential(sim: Simulation, controller: MPCController, cfg: DictConfig)
     start_timestamp = previous_ego.timestamp
     max_duration_ms = int(cfg.runtime.max_duration_ms)
     sim_step_ms = int(cfg.runtime.sim_step_ms)
+    # Lanes are static scenario content; buffer the drivable area only once.
+    lane_polygons = build_lane_polygons(sim.get_environment().lanes)
 
     try:
         while True:
@@ -312,7 +327,7 @@ def _run_sequential(sim: Simulation, controller: MPCController, cfg: DictConfig)
                 sim.step(acc, steer_rate, sim_step_ms)
 
                 env_frame = sim.get_environment()
-                stop_reason = _stop_reason_for_state(ego_state, env_frame, curr_env.lanes, cfg)
+                stop_reason = _stop_reason_for_state(ego_state, env_frame, curr_env.lanes, lane_polygons, cfg)
 
                 # Display goal: re-anchored to the current pose every frame so the
                 # box slides ahead of the vehicle. The planning target stays fixed
@@ -362,6 +377,7 @@ def _controller_worker(
     shared_state: SharedState,
     cfg: DictConfig,
     lanes,
+    lane_polygons,
 ) -> None:
     dt_sec = cfg.runtime.sim_step_ms / 1000.0
     while shared_state.is_running:
@@ -374,7 +390,7 @@ def _controller_worker(
         acc, steer_rate = _compute_control_command(controller, ego_state, trajectory, cfg)
         sim.step(acc, steer_rate, int(cfg.runtime.sim_step_ms))
 
-        stop_reason = _stop_reason_for_state(ego_state, sim.get_environment(), lanes, cfg)
+        stop_reason = _stop_reason_for_state(ego_state, sim.get_environment(), lanes, lane_polygons, cfg)
         if stop_reason is not None:
             with shared_state.lock:
                 shared_state.stop_reason = stop_reason
@@ -451,6 +467,8 @@ def _run_threaded(sim: Simulation, controller: MPCController, cfg: DictConfig) -
         print(f"Initial plan failed: {seed_result.status_message}. Starting without trajectory.")
 
     lanes = curr_env.lanes
+    # Lanes are static scenario content; buffer the drivable area only once.
+    lane_polygons = build_lane_polygons(lanes)
 
     # Planner runs in a separate process (own GIL): a Python-heavy planning
     # loop inside this interpreter starves the renderer ~70x through GIL
@@ -466,7 +484,7 @@ def _run_threaded(sim: Simulation, controller: MPCController, cfg: DictConfig) -
 
     ctrl_thread = threading.Thread(
         target=_controller_worker,
-        args=(sim, controller, shared_state, cfg, lanes),
+        args=(sim, controller, shared_state, cfg, lanes, lane_polygons),
         daemon=True,
     )
     ctrl_thread.start()

@@ -12,7 +12,7 @@ from models.models import (
     EgoState, EgoStateStamped, DynamicObject, DynamicObjectStamped,
     Environment, Lane, PredictedEnvironment, Vector2D
 )
-from shapely.geometry import Polygon
+from shapely.geometry import LineString, Polygon
 
 
 def get_colliding_object_ids(
@@ -45,6 +45,51 @@ def get_colliding_object_ids(
         if ego_polygon.intersects(obj_polygon):
             colliding_ids.append(obj.state.id)
     return colliding_ids
+
+
+def build_lane_polygons(lanes: List[Lane]) -> List[Polygon]:
+    """
+    Build one drivable-area polygon per lane by buffering its centerline by half
+    the lane width.
+
+    Lanes are static for the duration of a run, so callers should build these
+    once and reuse the result on every simulation step.
+    """
+    polygons: List[Polygon] = []
+    for lane in lanes:
+        if len(lane.centerline) < 2:
+            continue
+        centerline = LineString([(p.x, p.y) for p, _yaw in lane.centerline])
+        polygons.append(centerline.buffer(lane.width / 2.0))
+    return polygons
+
+
+def has_exited_lanes(
+    ego_state: EgoStateStamped,
+    lane_polygons: List[Polygon],
+    ego_length: float,
+    ego_width: float,
+    ego_rear_to_wheel: float,
+) -> bool:
+    """
+    True once the ego bounding box has zero overlap with every lane polygon,
+    i.e. the vehicle is completely off the drivable area (union of all lanes).
+
+    Reference-point convention matches get_colliding_object_ids: the ego state
+    position is at the rear axle (shifted to the geometric center here).
+    Boundary contact still counts as being on the road.
+    """
+    if not lane_polygons:
+        return False
+
+    ego_x, ego_y, ego_yaw = get_x_y_yaw_from_state(ego_state)
+    ego_x_center = ego_x + (ego_length / 2.0 - ego_rear_to_wheel) * cos(ego_yaw)
+    ego_y_center = ego_y + (ego_length / 2.0 - ego_rear_to_wheel) * sin(ego_yaw)
+
+    ego_corners = get_bbox_corners(ego_x_center, ego_y_center, ego_yaw, ego_length, ego_width)
+    ego_polygon = Polygon([(corner.x, corner.y) for corner in ego_corners])
+
+    return not any(ego_polygon.intersects(lane_polygon) for lane_polygon in lane_polygons)
 
 
 def _ego_object_distance(
