@@ -68,10 +68,22 @@ def plan(request: PlanningRequest, cfg: DictConfig, debug: bool = False) -> Plan
     exit_on_first = bool(getattr(cfg.planner, "exit_on_first_solution", False))
     solution_found = False
 
+    # Greedy dive bias for exit-on-first mode: with terminals only reachable at
+    # full depth, plain f-ordering floods the exponentially wide shallow
+    # frontier before any terminal matures. Subtracting a per-level discount
+    # from the sort key makes deeper nodes pop first while same-depth nodes
+    # still compete on true cost.
+    progress_bonus = float(getattr(cfg.cost.search, "progress_bonus", 0.0)) if exit_on_first else 0.0
+
     # --- Debug Tracking Variables ---
     total_generated_nodes = 1  
     max_depth_reached = 0
     ttfs_sec: Optional[float] = None
+
+    # Anytime fallback: deepest collision-free node seen so far. If the budget
+    # expires before any terminal node exists, the search returns this node's
+    # path extended at constant velocity instead of failing hard.
+    best_partial_node: Optional[StateNode] = None
 
     if is_in_goal_region(request.start_state, request.goal_region, cfg.vehicle):
         return PlanResult(
@@ -94,8 +106,26 @@ def plan(request: PlanningRequest, cfg: DictConfig, debug: bool = False) -> Plan
         node_depth=0,
         parent=None
     )
-    
-    heapq.heappush(open_nodes_pq, root)
+
+    # Discretized state deduplication (standard Hybrid A* practice): states
+    # falling into the same (x, y, yaw, speed) cell are transpositions - only
+    # the cheapest representative is kept in the open set. Without this the
+    # exponentially wide primitive fan is stored and re-expanded verbatim.
+    _XY_BIN = 1.0
+    _YAW_BIN = 0.09
+    _V_BIN = 1.0
+    visited_cells: dict[tuple, StateNode] = {}
+    def _cell_key(stamped_state) -> tuple:
+        st = stamped_state.state
+        return (
+            int(round(st.pos.x / _XY_BIN)),
+            int(round(st.pos.y / _XY_BIN)),
+            int(round(st.yaw / _YAW_BIN)),
+            int(round(get_signed_magnitude(st.velocity, st.yaw) / _V_BIN)),
+        )
+    visited_cells[_cell_key(request.start_state)] = root
+
+    heapq.heappush(open_nodes_pq, (root.total_cost, root.id, root))
 
     while True:
         loop_start_time = time.perf_counter()
@@ -103,7 +133,7 @@ def plan(request: PlanningRequest, cfg: DictConfig, debug: bool = False) -> Plan
         if not open_nodes_pq:
             break
 
-        prev_node = heapq.heappop(open_nodes_pq)
+        prev_node = heapq.heappop(open_nodes_pq)[2]
         prev_stamped_state = prev_node.state_stamped
 
         raw_velocity = get_signed_magnitude(
@@ -166,8 +196,23 @@ def plan(request: PlanningRequest, cfg: DictConfig, debug: bool = False) -> Plan
                 parent=prev_node, motion_primitive=mp
             )
             
+            _cell = _cell_key(curr_state)
+            _seen = visited_cells.get(_cell)
+            if _seen is not None and _seen.total_cost <= new_node.total_cost:
+                continue
+            visited_cells[_cell] = new_node
+
+            if not math.isinf(node_cost) and (
+                best_partial_node is None
+                or new_node.node_depth > best_partial_node.node_depth
+                or (new_node.node_depth == best_partial_node.node_depth
+                    and new_node.total_cost < best_partial_node.total_cost)
+            ):
+                best_partial_node = new_node
+
             if not new_node.goal_region_reached and new_node.node_depth < max_depth:
-                heapq.heappush(open_nodes_pq, new_node)
+                sort_cost = new_node.total_cost - progress_bonus * new_node.node_depth
+                heapq.heappush(open_nodes_pq, (sort_cost, new_node.id, new_node))
             else:
                 heapq.heappush(end_nodes_pq, new_node)
                  # Record Time to First Solution (TTFS)
@@ -198,11 +243,29 @@ def plan(request: PlanningRequest, cfg: DictConfig, debug: bool = False) -> Plan
     if end_nodes_pq:
         best_end_node = heapq.heappop(end_nodes_pq)
 
+    use_fallback = False
+    if best_end_node is None or math.isinf(best_end_node.total_cost):
+        if best_partial_node is not None:
+            best_end_node = best_partial_node
+            use_fallback = True
+
     success = best_end_node is not None and not math.isinf(best_end_node.total_cost)
 
     path_length_raw = 0
     if success:
         path = extract_path_stamped_states(best_end_node)
+        if use_fallback:
+            # Extend the partial path at constant velocity along the current
+            # steering angle so the trajectory always spans the full horizon.
+            ext_state = path[-1]
+            while len(path) < max_depth + 1:
+                ext_state = kinematic_bicycle(
+                    stamped_state=ext_state,
+                    control=EgoInput(ext_state.state.steering_angle, 0.0),
+                    dt=cfg.planner.dt_sim,
+                    vehicle_params=cfg.vehicle
+                )
+                path.append(ext_state)
         path_length_raw = len(path)
 
         rescaling_factor = int(cfg.planner.dt_output / cfg.planner.dt_sim)
@@ -214,7 +277,10 @@ def plan(request: PlanningRequest, cfg: DictConfig, debug: bool = False) -> Plan
             goal_region_reached=best_end_node.goal_region_reached,
             trajectory=trajectory,
             cost=best_end_node.total_cost,
-            status_message=None,
+            status_message=(
+                "Budget exhausted - returned best partial trajectory "
+                "extended to horizon" if use_fallback else None
+            ),
             debug_root_node=root
         )
     else:
