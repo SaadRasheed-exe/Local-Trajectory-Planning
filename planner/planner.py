@@ -5,14 +5,15 @@ from planner.motion_primitives import MotionPrimitive
 from planner.motion_primitives import get_motion_primitives
 from planner.state_node import StateNode
 from shapely.geometry import Polygon
-from motion.bicycle import kinematic_bicycle
+from core.dynamics import kinematic_bicycle
 import heapq
 import math
 from omegaconf import DictConfig, OmegaConf
 from utils.helper import convert_cfg_to_native
 import time
 
-from utils.helper import get_magnitude, get_signed_magnitude, lane_blocked_ahead
+from core.geometry import get_magnitude, get_signed_magnitude
+from utils.helper import lane_blocked_ahead
 from planner.cost.cost import calculate_node_cost, calculate_heuristic_cost, calculate_total_cost
 
 class IDProvider:

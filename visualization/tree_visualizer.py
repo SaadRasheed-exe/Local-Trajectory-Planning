@@ -12,7 +12,7 @@ from bokeh.palettes import Reds256
 from core.types.perception import PredictedEnvironment
 from core.types.planning import PlanResult, GoalRegion
 from omegaconf import DictConfig
-from utils.helper import get_bbox_corners
+from core.geometry import get_bbox_corners
 
 def _get_bbox_corners(x: float, y: float, yaw: float, length: float, width: float) -> tuple[list[float], list[float]]:
     """

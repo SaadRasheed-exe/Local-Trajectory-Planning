@@ -20,7 +20,7 @@ if str(REPO_ROOT) not in sys.path:
 from core.types.geometry import Vector2D
 from core.types.vehicle import EgoInput, EgoState, EgoStateStamped
 from omegaconf import DictConfig, OmegaConf
-from utils.helper import get_magnitude, get_vector, global_to_ego_axis
+from core.geometry import get_magnitude, get_vector, global_to_ego_axis
 
 
 _MIN_SPEED_FOR_SLIP = 0.1

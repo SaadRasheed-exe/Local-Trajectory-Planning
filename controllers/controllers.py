@@ -10,7 +10,7 @@ from omegaconf import DictConfig
 from core.types.geometry import Vector2D
 from core.types.planning import Trajectory
 from core.types.vehicle import EgoStateStamped, EgoState
-from utils.helper import get_magnitude, get_signed_magnitude, get_vector
+from core.geometry import get_magnitude, get_signed_magnitude, get_vector
 
 
 class MPCController:

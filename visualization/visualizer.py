@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 from matplotlib import transforms
 from core.types import *
-from utils.helper import get_signed_magnitude
+from core.geometry import get_signed_magnitude
 
 # Extended module-level state
 _fig = None

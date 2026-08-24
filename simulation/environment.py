@@ -1,6 +1,6 @@
 from math import pi
 from omegaconf import DictConfig
-from utils.helper import get_vector
+from core.geometry import get_vector
 from core.types.agents import ObjectType, DynamicObjectStamped, DynamicObject
 from core.types.geometry import Vector2D
 from core.types.road import Lane, Environment

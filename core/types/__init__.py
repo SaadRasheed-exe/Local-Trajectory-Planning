@@ -1,4 +1,5 @@
 from core.types.agents import DynamicObject, DynamicObjectStamped, ObjectType
+from core.types.control import ControlCommand
 from core.types.geometry import Vector2D
 from core.types.perception import PredictedEnvironment
 from core.types.planning import GoalRegion, PlanResult, PlanningRequest, Trajectory
@@ -7,6 +8,7 @@ from core.types.vehicle import EgoInput, EgoState, EgoStateStamped
 
 __all__ = [
     "Vector2D",
+    "ControlCommand",
     "EgoInput",
     "EgoState",
     "EgoStateStamped",

@@ -1,8 +1,9 @@
 import math
+from typing import Any
+
 from core.types.geometry import Vector2D
 from core.types.vehicle import EgoInput, EgoState, EgoStateStamped
-from omegaconf import DictConfig
-from utils.helper import get_vector, get_magnitude, get_signed_magnitude
+from core.geometry import get_magnitude, get_signed_magnitude, get_vector
 from dataclasses import dataclass
 
 
@@ -10,7 +11,7 @@ def kinematic_bicycle(
     stamped_state: EgoStateStamped,
     control: EgoInput,
     dt: int,
-    vehicle_params: DictConfig,
+    vehicle_params: Any,
 ) -> EgoStateStamped:
     """
     Lightweight kinematic bicycle propagation.
@@ -97,7 +98,7 @@ class DynamicBicycleModel:
     def __init__(
         self,
         ego_state: EgoState,
-        vehicle_params: DictConfig,
+        vehicle_params: Any,
     ):
         """
         Initialize from EgoState.

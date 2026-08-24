@@ -4,7 +4,7 @@ from shapely.geometry import Polygon
 from collision.collision import get_distance_to_objects
 from core.types import *
 from omegaconf import DictConfig
-from utils.helper import get_bbox_corners, get_magnitude, get_signed_magnitude, get_x_y_yaw_from_state
+from core.geometry import get_bbox_corners, get_magnitude, get_signed_magnitude, get_x_y_yaw_from_state
 
 
 #--- Comfort Costs ---------------------------------------------------------------------

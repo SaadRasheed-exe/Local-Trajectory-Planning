@@ -21,7 +21,7 @@ from core.types.perception import PredictedEnvironment
 from core.types.road import Environment
 from core.types.vehicle import EgoStateStamped
 from omegaconf import DictConfig
-from utils.helper import global_to_ego_axis
+from core.geometry import global_to_ego_axis
 
 from prediction.predictivity import PredictionModel, predict_environment
 

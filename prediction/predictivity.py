@@ -7,7 +7,7 @@ from core.types.agents import DynamicObject, DynamicObjectStamped
 from core.types.geometry import Vector2D
 from core.types.perception import PredictedEnvironment
 from core.types.road import Environment
-from utils.helper import get_signed_magnitude, get_vector
+from core.geometry import get_signed_magnitude, get_vector
 
 PredictionModel = Literal["constant_acceleration", "constant_turn_rate"]
 
