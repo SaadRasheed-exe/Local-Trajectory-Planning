@@ -8,10 +8,11 @@ from utils.helper import (
     MovingObject,
 )
 from typing import Tuple, List, Optional, overload, Sequence
-from models.models import (
-    EgoState, EgoStateStamped, DynamicObject, DynamicObjectStamped,
-    Environment, Lane, PredictedEnvironment, Vector2D
-)
+from core.types.agents import DynamicObject, DynamicObjectStamped
+from core.types.geometry import Vector2D
+from core.types.perception import PredictedEnvironment
+from core.types.road import Environment, Lane
+from core.types.vehicle import EgoState, EgoStateStamped
 from shapely.geometry import LineString, Polygon
 
 

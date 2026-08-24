@@ -9,7 +9,8 @@ from bokeh.models import (
 from bokeh.layouts import column, row
 from bokeh.palettes import Reds256
 
-from models.models import PlanResult, PredictedEnvironment, GoalRegion
+from core.types.perception import PredictedEnvironment
+from core.types.planning import PlanResult, GoalRegion
 from omegaconf import DictConfig
 from utils.helper import get_bbox_corners
 

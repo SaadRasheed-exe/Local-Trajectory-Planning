@@ -1,7 +1,9 @@
 from math import pi
 from omegaconf import DictConfig
 from utils.helper import get_vector
-from models.models import Vector2D, Lane, ObjectType, DynamicObjectStamped, DynamicObject, Environment
+from core.types.agents import ObjectType, DynamicObjectStamped, DynamicObject
+from core.types.geometry import Vector2D
+from core.types.road import Lane, Environment
 
 
 def _kmh_to_mps(speed_kmh: float) -> float:

@@ -1,4 +1,4 @@
-from models.models import *
+from core.types import *
 from anytree import NodeMixin
 from anytree.search import findall
 from planner.motion_primitives import MotionPrimitive
@@ -34,7 +34,7 @@ _MIN_PLANNING_SPEED: float = 1.5
 import math
 import time
 import heapq
-from typing import Optional
+from typing import List, Optional
 
 def plan(request: PlanningRequest, cfg: DictConfig, debug: bool = False) -> PlanResult:
     """

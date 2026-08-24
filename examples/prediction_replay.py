@@ -16,12 +16,10 @@ if str(REPO_ROOT) not in sys.path:
 
 import numpy as np
 
-from models.models import (
-    DynamicObjectStamped,
-    Environment,
-    EgoStateStamped,
-    PredictedEnvironment,
-)
+from core.types.agents import DynamicObjectStamped
+from core.types.perception import PredictedEnvironment
+from core.types.road import Environment
+from core.types.vehicle import EgoStateStamped
 from omegaconf import DictConfig
 from utils.helper import global_to_ego_axis
 

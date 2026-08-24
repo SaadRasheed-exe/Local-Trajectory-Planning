@@ -3,7 +3,10 @@ from math import atan2, pi
 import copy
 import threading
 from omegaconf import DictConfig
-from models.models import EgoStateStamped, EgoState, Environment, Vector2D, DynamicObjectStamped
+from core.types.agents import DynamicObjectStamped
+from core.types.geometry import Vector2D
+from core.types.road import Environment
+from core.types.vehicle import EgoStateStamped, EgoState
 from utils.helper import get_vector, get_signed_magnitude
 from motion.bicycle import DynamicBicycleModel
 from prediction.predictivity import predict_motion_constant_velocity

@@ -1,5 +1,6 @@
 import math
-from models.models import EgoInput, EgoState, EgoStateStamped, Vector2D
+from core.types.geometry import Vector2D
+from core.types.vehicle import EgoInput, EgoState, EgoStateStamped
 from omegaconf import DictConfig
 from utils.helper import get_vector, get_magnitude, get_signed_magnitude
 from dataclasses import dataclass

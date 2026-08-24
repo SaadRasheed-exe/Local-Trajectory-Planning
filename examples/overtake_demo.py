@@ -17,7 +17,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from models.models import EgoInput, EgoState, EgoStateStamped, Vector2D
+from core.types.geometry import Vector2D
+from core.types.vehicle import EgoInput, EgoState, EgoStateStamped
 from omegaconf import DictConfig, OmegaConf
 from utils.helper import get_magnitude, get_vector, global_to_ego_axis
 

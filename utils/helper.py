@@ -1,6 +1,10 @@
 from math import atan2, cos, pi, sin, hypot, sqrt
 from typing import List, Optional, Tuple, Union
-from models.models import Vector2D, EgoState, EgoStateStamped, DynamicObjectStamped, Lane, GoalRegion
+from core.types.agents import DynamicObjectStamped
+from core.types.geometry import Vector2D
+from core.types.planning import GoalRegion
+from core.types.road import Lane
+from core.types.vehicle import EgoState, EgoStateStamped
 
 MovingObject = Union[EgoStateStamped, DynamicObjectStamped]
 import copy

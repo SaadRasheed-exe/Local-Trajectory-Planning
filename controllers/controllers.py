@@ -7,12 +7,9 @@ import numpy as np
 from typing import Optional, Tuple, List
 from omegaconf import DictConfig
 
-from models.models import (
-    EgoStateStamped,
-    EgoState,
-    Trajectory,
-    Vector2D
-)
+from core.types.geometry import Vector2D
+from core.types.planning import Trajectory
+from core.types.vehicle import EgoStateStamped, EgoState
 from utils.helper import get_magnitude, get_signed_magnitude, get_vector
 
 

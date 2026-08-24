@@ -1,4 +1,5 @@
-from models.models import *
+from typing import Dict, Tuple
+from core.types import *
 from planner.cost.transition_cost import *
 from planner.cost.dubins_path_planner import get_dubins_path_length
 from planner.motion_primitives import _get_max_steering_angle
@@ -11,7 +12,8 @@ from unittest.mock import patch
 
 from omegaconf import DictConfig
 
-from models.models import EgoStateStamped, PlanningRequest
+from core.types.planning import PlanningRequest
+from core.types.vehicle import EgoStateStamped
 from planner.cost.transition_cost import (
     cost_jerk,
     cost_acceleration,

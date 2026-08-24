@@ -38,7 +38,10 @@ from collision.collision import (
     has_exited_lanes,
 )
 from controllers.controllers import MPCController
-from models.models import EgoStateStamped, Environment, PlanningRequest, PredictedEnvironment, Trajectory
+from core.types.perception import PredictedEnvironment
+from core.types.planning import PlanningRequest, Trajectory
+from core.types.road import Environment
+from core.types.vehicle import EgoStateStamped
 from planner.planner import plan
 from prediction.predictivity import predict_environment
 from simulation.simulate import Simulation
