@@ -1,12 +1,41 @@
-"""Request-preparation policy: rolling-goal placement and lane anchoring."""
-from math import atan2, cos, hypot, sin
-from typing import List, Tuple
+"""Planning-request preparation and shared run-loop policies.
 
+Everything here is plain application logic over core types plus the selected
+components; it contains no runtime-mode specifics.
+"""
+import time
+from omegaconf import DictConfig, OmegaConf
+
+from math import atan2, cos, hypot, sin
+from typing import List, Optional, Tuple
+
+from simulation.simulate import Simulation
+
+from components.collision.collision_queries import (
+    get_colliding_object_ids,
+    get_distance_to_objects,
+    has_exited_lanes,
+)
+from components.predictors.constant_velocity.predictor import predict_environment
 from core.geometry import get_signed_magnitude
-from core.road_queries import lane_representative_yaw
+from core.road_queries import get_ego_lane_info, lane_representative_yaw
 from core.types import GoalRegion, Lane, Vector2D
+from core.types.perception import PredictedEnvironment
+from core.types.planning import PlanningRequest, Trajectory
+from core.types.road import Environment
 from core.types.vehicle import EgoStateStamped
 
+FALLBACK_TARGET_SPEED = 10.0   # [m/s], used when ego is not matched to any lane
+FALLBACK_GOAL_LENGTH = 5.0     # [m]
+FALLBACK_GOAL_WIDTH = 5.0      # [m]
+
+# The run stops once the ego is this close to its lane's last centerline point.
+LANE_END_STOP_MARGIN_M = 5.0
+
+
+# ---------------------------------------------------------------------------
+# Rolling-goal placement
+# ---------------------------------------------------------------------------
 
 def get_goal_region(
     curr_ego_state: EgoStateStamped,
@@ -119,3 +148,194 @@ def get_nearest_lane_center(ego_state: EgoStateStamped, lanes: List[Lane]) -> Tu
     return nearest_lane_yaw, nearest_point
 
 
+# ---------------------------------------------------------------------------
+# Planning-request assembly
+# ---------------------------------------------------------------------------
+
+def _build_predicted_environment(curr_env, cfg: DictConfig) -> PredictedEnvironment:
+    try:
+        return predict_environment(
+            environment=curr_env,
+            prediction_horizon=cfg.planner.horizon,
+            dt=cfg.planner.dt_sim,
+        )
+    except ValueError:
+        # Scenarios without dynamic objects: nothing to predict.
+        return PredictedEnvironment(
+            objects={},
+            lanes=curr_env.lanes,
+            dt=cfg.planner.dt_sim,
+            horizon=cfg.planner.horizon,
+        )
+
+
+def _get_target_speed(ego_state: EgoStateStamped, curr_env, cfg: DictConfig) -> float:
+    _, _, _, _, _, lane_speed_limit = get_ego_lane_info(
+        ego_state=ego_state.state,
+        ego_length=cfg.vehicle.length,
+        ego_width=cfg.vehicle.width,
+        ego_rear_to_wheel=cfg.vehicle.rear_to_wheel,
+        lanes=curr_env.lanes,
+    )
+    return lane_speed_limit if lane_speed_limit else FALLBACK_TARGET_SPEED
+
+
+def _build_goal_region(
+    lanes,
+    ego_state: EgoStateStamped,
+    cfg: DictConfig,
+    target_speed: float,
+):
+    """
+    Anchor the rolling goal region relative to the ego pose.
+
+    This is a local planner: the goal is always 'horizon seconds ahead on the
+    current lane' (see get_goal_region), never a fixed map
+    coordinate. Called once per planning loop for the actual planning target
+    and once per animation frame for the live display.
+    """
+    goal_cfg = OmegaConf.select(cfg, "scenario.goal")
+    return get_goal_region(
+        curr_ego_state=ego_state,
+        lanes=lanes,
+        horizon=int(goal_cfg.horizon) if goal_cfg is not None else cfg.planner.horizon,
+        length=float(goal_cfg.length) if goal_cfg is not None else FALLBACK_GOAL_LENGTH,
+        width=float(goal_cfg.width) if goal_cfg is not None else FALLBACK_GOAL_WIDTH,
+        target_speed=target_speed,
+    )
+
+
+def _build_planning_pipeline(curr_env, ego_state: EgoStateStamped, cfg: DictConfig):
+    """Build predictions and assemble a PlanningRequest from a world snapshot."""
+    pred_env = _build_predicted_environment(curr_env, cfg)
+
+    target_speed = _get_target_speed(ego_state, curr_env, cfg)
+    goal_region = _build_goal_region(curr_env.lanes, ego_state, cfg, target_speed)
+
+    request = PlanningRequest(
+        start_state=ego_state,
+        goal_region=goal_region,
+        target_speed=target_speed,
+        environment=pred_env,
+    )
+    return pred_env, goal_region, request
+
+
+def _prepare_planning(sim: Simulation, cfg: DictConfig):
+    """Fetch world state, build predictions and assemble a PlanningRequest."""
+    curr_env = sim.get_environment()
+    ego_state = sim.get_ego_state()
+    pred_env, goal_region, request = _build_planning_pipeline(curr_env, ego_state, cfg)
+    return curr_env, ego_state, pred_env, goal_region, request
+
+
+# ---------------------------------------------------------------------------
+# Control fallback + stop conditions
+# ---------------------------------------------------------------------------
+
+def _brake_command(cfg: DictConfig) -> Tuple[float, float]:
+    # vehicle.max_deceleration is negative by convention.
+    return float(cfg.vehicle.max_deceleration), 0.0
+
+
+def _compute_control_command(
+    controller,
+    ego_state: EgoStateStamped,
+    trajectory: Optional[Trajectory],
+    cfg: DictConfig,
+) -> Tuple[float, float]:
+    """Returns (acceleration, steer_rate); falls back to emergency braking."""
+    if trajectory is None or ego_state.timestamp >= trajectory.states[-1].timestamp:
+        print("No usable trajectory (none available or plan exhausted). Emergency braking.")
+        return _brake_command(cfg)
+    try:
+        command = controller.compute_control(ego_state, trajectory)
+        return command.acceleration, command.steer_rate
+    except Exception as exc:
+        print(f"Controller failed ({exc}). Emergency braking.")
+        return _brake_command(cfg)
+
+
+def _pace_real_time(loop_start: float, step_ms: int) -> None:
+    remaining_s = step_ms / 1000.0 - (time.perf_counter() - loop_start)
+    if remaining_s > 0.0:
+        time.sleep(remaining_s)
+    else:
+        print(f"Warning: loop overran its {step_ms} ms budget by {-remaining_s * 1000.0:.1f} ms")
+
+
+def _stop_reason_for_state(
+    ego_state: EgoStateStamped,
+    environment: Environment,
+    lanes,
+    lane_polygons,
+    cfg: DictConfig,
+) -> Optional[str]:
+    """
+    Returns a shutdown reason if the run must stop now, else None.
+
+    Stop conditions: the ego bounding box intersects another vehicle, the ego
+    bounding box is completely off the drivable area (all lanes), or the ego
+    has reached the end of its lane. Evaluated once per simulation step.
+    """
+    colliding_ids = get_colliding_object_ids(
+        ego_state=ego_state,
+        environment=environment,
+        ego_length=float(cfg.vehicle.length),
+        ego_width=float(cfg.vehicle.width),
+        ego_rear_to_wheel=float(cfg.vehicle.rear_to_wheel),
+    )
+    if colliding_ids:
+        return f"Collision with object(s) {colliding_ids}."
+
+    if has_exited_lanes(
+        ego_state=ego_state,
+        lane_polygons=lane_polygons,
+        ego_length=float(cfg.vehicle.length),
+        ego_width=float(cfg.vehicle.width),
+        ego_rear_to_wheel=float(cfg.vehicle.rear_to_wheel),
+    ):
+        return "Ego fully exited the lane boundaries."
+
+    if get_nearest_lane_end_distance(ego_state, lanes) <= LANE_END_STOP_MARGIN_M:
+        return "Lane end reached."
+
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Debug helpers
+# ---------------------------------------------------------------------------
+
+def _log_object_distances(
+    previous_ego: EgoStateStamped,
+    current_ego: EgoStateStamped,
+    pred_env: PredictedEnvironment,
+    cfg: DictConfig,
+) -> None:
+    ff_cfg = cfg.cost.cost_objects_force_field
+    distances, is_collision = get_distance_to_objects(
+        current_ego=current_ego,
+        previous_ego=previous_ego,
+        predicted_env=pred_env,
+        ego_length=cfg.vehicle.length,
+        ego_width=cfg.vehicle.width,
+        ego_rear_to_wheel=cfg.vehicle.rear_to_wheel,
+        resolution_ms=int(ff_cfg.resolution_ms),
+        calc_exact_distance=float(ff_cfg.d_ffl),
+    )
+    print(f"[debug] Object distances: {distances} | collision: {is_collision}")
+
+
+def _export_search_tree(plan_result, pred_env, goal_region, cfg: DictConfig) -> None:
+    # Lazy import: bokeh is only needed when debugging.
+    from visualization.tree_visualizer import visualize_search_tree
+
+    visualize_search_tree(
+        plan_result=plan_result,
+        pred_env=pred_env,
+        goal_region=goal_region,
+        cfg=cfg,
+        vehicle_cfg=cfg.vehicle,
+        output_filename="debug_tree.html",
+    )

@@ -13,7 +13,11 @@ from core.types.vehicle import EgoStateStamped, EgoState
 from core.geometry import get_magnitude, get_signed_magnitude, get_vector
 
 
-class MPCController:
+from core.interfaces.controller import Controller
+from core.types.control import ControlCommand
+
+
+class MPCController(Controller):
     """
     Nonlinear MPC based on a kinematic bicycle model.
 
@@ -264,6 +268,21 @@ class MPCController:
         return states[-1].state
 
     def compute_control(
+        self,
+        ego_state: EgoStateStamped,
+        trajectory: Optional[Trajectory],
+    ) -> ControlCommand:
+        """Interface method: returns a ControlCommand for the current state."""
+        if trajectory is None:
+            return ControlCommand(
+                acceleration=self.max_dec,
+                steer_rate=0.0,
+                emergency_stop=True,
+            )
+        acc, steer_rate = self.solve_control(ego_state, trajectory)[0]
+        return ControlCommand(acceleration=acc, steer_rate=steer_rate)
+
+    def solve_control(
         self,
         ego_state: EgoStateStamped,
         trajectory: Trajectory,

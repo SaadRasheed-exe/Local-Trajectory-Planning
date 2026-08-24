@@ -9,7 +9,7 @@ from core.dynamics import kinematic_bicycle
 import heapq
 import math
 from omegaconf import DictConfig, OmegaConf
-from app.config import convert_cfg_to_native
+from core.config_tools import convert_cfg_to_native
 import time
 
 from core.geometry import get_magnitude, get_signed_magnitude
