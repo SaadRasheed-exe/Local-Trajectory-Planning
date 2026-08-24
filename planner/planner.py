@@ -12,7 +12,7 @@ from omegaconf import DictConfig, OmegaConf
 from utils.helper import convert_cfg_to_native
 import time
 
-from utils.helper import get_magnitude, get_signed_magnitude
+from utils.helper import get_magnitude, get_signed_magnitude, lane_blocked_ahead
 from planner.cost.cost import calculate_node_cost, calculate_heuristic_cost, calculate_total_cost
 
 class IDProvider:
@@ -66,6 +66,13 @@ def plan(request: PlanningRequest, cfg: DictConfig, debug: bool = False) -> Plan
     max_depth = math.ceil(cfg.planner.horizon / cfg.planner.dt_sim)
     call_time = time.perf_counter()
     exit_on_first = bool(getattr(cfg.planner, "exit_on_first_solution", False))
+    # Accepting the very first full-depth terminal lets whichever primitive
+    # chain reaches max depth fastest win, even when its cost is far worse
+    # than alternatives (e.g. road-edge-hugging arcs). Collecting at least
+    # min_terminals terminals before stopping keeps cycles short while
+    # restoring basic solution quality.
+    min_terminals = max(1, int(getattr(cfg.planner, "min_terminals", 1)))
+    terminals_found = 0
     solution_found = False
 
     # Greedy dive bias for exit-on-first mode: with terminals only reachable at
@@ -74,6 +81,24 @@ def plan(request: PlanningRequest, cfg: DictConfig, debug: bool = False) -> Plan
     # from the sort key makes deeper nodes pop first while same-depth nodes
     # still compete on true cost.
     progress_bonus = float(getattr(cfg.cost.search, "progress_bonus", 0.0)) if exit_on_first else 0.0
+
+    # Return-mode gate: with no blocker ahead the overtake is complete, so a
+    # strong opposite-lane penalty pushes the ego back into its original lane.
+    # While a blocker remains ahead, penalties stay untouched so passing is
+    # never discouraged. Evaluated once per planning cycle (not per node).
+    ret_cfg = getattr(cfg.cost, "cost_opposite_lane_return_mode", None)
+    if ret_cfg is not None and not lane_blocked_ahead(
+        start_state=request.start_state,
+        predicted_env=request.environment,
+        veh_cfg=cfg.vehicle,
+        lookahead_m=float(ret_cfg.lookahead_m),
+        corridor_half_width_m=float(ret_cfg.corridor_half_width_m),
+        speed_margin_mps=float(ret_cfg.speed_margin_mps),
+        rear_hold_m=float(ret_cfg.rear_hold_m),
+    ):
+        opposite_lane_weight_scale = float(ret_cfg.multiplier)
+    else:
+        opposite_lane_weight_scale = 1.0
 
     # --- Debug Tracking Variables ---
     total_generated_nodes = 1  
@@ -169,7 +194,8 @@ def plan(request: PlanningRequest, cfg: DictConfig, debug: bool = False) -> Plan
 
             node_cost, detailed_costs = calculate_node_cost(
                 prev_state=prev_stamped_state, curr_state=curr_state,
-                request=request, cost_cfg=cfg.cost, veh_cfg=cfg.vehicle
+                request=request, cost_cfg=cfg.cost, veh_cfg=cfg.vehicle,
+                opposite_lane_weight_scale=opposite_lane_weight_scale
             )
             
             heuristic_cost = calculate_heuristic_cost(
@@ -222,7 +248,8 @@ def plan(request: PlanningRequest, cfg: DictConfig, debug: bool = False) -> Plan
                     # usable trajectory; stopping here keeps plan cycles short
                     # and deterministic instead of optimizing until the budget
                     # runs out.
-                    if exit_on_first:
+                    terminals_found += 1
+                    if exit_on_first and terminals_found >= min_terminals:
                         solution_found = True
 
         loop_stop_time = time.perf_counter()

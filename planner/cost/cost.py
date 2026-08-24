@@ -4,6 +4,8 @@ from planner.cost.dubins_path_planner import get_dubins_path_length
 from planner.motion_primitives import _get_max_steering_angle
 from collision.collision import get_ego_lane_info
 
+from math import atan2
+
 import unittest
 from unittest.mock import patch
 
@@ -67,7 +69,8 @@ def calculate_node_cost(
     curr_state: EgoStateStamped,
     request: PlanningRequest,
     cost_cfg: DictConfig,
-    veh_cfg: DictConfig
+    veh_cfg: DictConfig,
+    opposite_lane_weight_scale: float = 1.0
 ) -> Tuple[float, Dict[str, float]]:
     """
     Calculates the total weighted cost for a specific state transition and provides a detailed breakdown.
@@ -137,7 +140,9 @@ def calculate_node_cost(
         ego_length = veh_cfg.length,
         ego_width = veh_cfg.width,
         ego_rear_to_wheel = veh_cfg.rear_to_wheel,
-        lanes=request.environment.lanes
+        lanes=request.environment.lanes,
+        reference_yaw=atan2(curr_state.state.velocity.y, curr_state.state.velocity.x)
+        if opposite_lane_weight_scale != 1.0 else None
     )
     
     raw_cost_center = cost_lane_center_distance(dist_to_center)
@@ -155,7 +160,9 @@ def calculate_node_cost(
     detailed_costs["lane_center"] = weights.lane_center * raw_cost_center
     detailed_costs["lane_yaw"] = weights.lane_yaw * raw_cost_yaw
     detailed_costs["lane_occlusion"] = weights.lane_occlusion * raw_cost_occ
-    detailed_costs["opposite_lane"] = weights.opposite_lane * raw_cost_opp
+    # The scale engages the strong return-mode penalty once no blocker lies
+    # ahead (overtake complete); it stays 1.0 while an overtake is warranted.
+    detailed_costs["opposite_lane"] = weights.opposite_lane * opposite_lane_weight_scale * raw_cost_opp
     
     # ---------------------------------------------------------
     # Aggregation

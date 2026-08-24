@@ -1,5 +1,5 @@
 import heapq
-from math import pi, cos, sin, hypot
+from math import pi, cos, sin, hypot, atan2
 from utils.helper import (
     get_bbox_corners,
     get_vector,
@@ -400,11 +400,20 @@ def get_ego_lane_info(
     ego_length: float,
     ego_width: float,
     ego_rear_to_wheel: float,
-    lanes: List[Lane]
+    lanes: List[Lane],
+    reference_yaw: float = None
 ) -> Tuple[int, float, float, float, bool, float]:
     """
     Evaluates the ego vehicle's position relative to the road topology.
-    
+
+    When reference_yaw is given, the primary lane is selected only among
+    travel-direction lanes whose representative direction agrees with it
+    (falling back to the aligned lane with the highest footprint overlap).
+    This supplies the lateral cost gradient that pulls the ego back into its
+    original lane once an overtake is complete; without it the nearest-
+    overlap rule keeps referencing the lane the ego is currently inside and
+    no return pressure exists.
+
     Returns:
     lane_id: int (ID of the best matching lane)
     distance_to_lane_center: float [m]
@@ -419,6 +428,14 @@ def get_ego_lane_info(
     best_yaw_offset = 0.0
     is_opposite = False
     best_speed_limit = 0.0
+    # Highest-overlap aligned lane, used as fallback when none exceeds the
+    # 0.5 primary threshold (e.g. ego still mostly inside the other lane).
+    fb_ratio = -1.0
+    fb_dist = 0.0
+    fb_yaw_offset = 0.0
+    fb_opposite = False
+    fb_speed_limit = 0.0
+    fb_lane_id = -1
 
     # 1. Forcibly shift coordinates to the geometric center for accurate boundary checks!
     # Relying on the rear axle would falsely flag front-bumper lane departures.
@@ -433,7 +450,14 @@ def get_ego_lane_info(
     for lane in lanes:
         if not lane.centerline:
             continue
-            
+
+        # Travel-direction filter for return mode: skip lanes whose
+        # representative direction opposes the requested reference yaw.
+        if reference_yaw is not None:
+            p0 = lane.centerline[0][0]
+            p1 = lane.centerline[min(1, len(lane.centerline) - 1)][0]
+            if cos(atan2(p1.y - p0.y, p1.x - p0.x) - reference_yaw) <= 0.25:
+                continue
         # Quick closest-point search for spatial rejection.
         # Coarse-to-fine: stride scan first, then refine around the best hit
         # (centerlines are densely sampled; a full scan per node is wasteful).
@@ -463,16 +487,19 @@ def get_ego_lane_info(
                 closest_idx = i
 
         # Rejection radius based on the geometric center
-        # If the vehicle's bounding circle cannot possibly touch the lane boundary, skip the lane
+        # If the vehicle's bounding circle cannot possibly touch the lane boundary, skip the lane.
+        # Skipped when a reference_yaw filter is active: the ego may be far outside the
+        # reference lane mid-return, and its offset must be measured anyway to supply
+        # the pull-back gradient (inf would poison every downstream cost).
         rejection_threshold = (lane.width / 2.0) + max_ego_radius + 2.0
-        if closest_sq_dist > rejection_threshold**2:
+        if reference_yaw is None and closest_sq_dist > rejection_threshold**2:
             continue
 
         # Calculate the exact lateral offset using the CENTER coordinates
         dist_to_center, yaw_offset = _get_lane_offset(ego_center_x, ego_center_y, ego_yaw, lane, closest_idx)
 
         # Second early exit: If the center is too far from the boundaries
-        if dist_to_center > (lane.width / 2.0) + max_ego_radius:
+        if reference_yaw is None and dist_to_center > (lane.width / 2.0) + max_ego_radius:
             continue
 
         # Mathematical approximation of the bounding box overlap.
@@ -507,5 +534,17 @@ def get_ego_lane_info(
             # If the yaw deviation is greater than 90 degrees, the vehicle is facing the wrong way
             is_opposite = (yaw_offset > pi / 2 or yaw_offset < -pi / 2)
             best_speed_limit = lane.speed_limit
-            
+
+        if reference_yaw is not None and lane_occlusion_ratio > fb_ratio:
+            fb_ratio = lane_occlusion_ratio
+            fb_lane_id = lane.id
+            fb_dist = dist_to_center
+            fb_yaw_offset = yaw_offset
+            fb_opposite = (yaw_offset > pi / 2 or yaw_offset < -pi / 2)
+            fb_speed_limit = lane.speed_limit
+
+    if best_lane_id == -1 and fb_lane_id != -1:
+        best_lane_id, best_dist, best_yaw_offset = fb_lane_id, fb_dist, fb_yaw_offset
+        is_opposite, best_speed_limit = fb_opposite, fb_speed_limit
+
     return best_lane_id, best_dist, best_yaw_offset, occlusion_sum, is_opposite, best_speed_limit

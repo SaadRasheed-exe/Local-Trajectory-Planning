@@ -16,7 +16,7 @@ transition_weights:
   accel_lat: 5.0               # Multiplier for lateral acceleration
   speed: 6.0                   # Multiplier for the total speed cost
   objects: 4.0                 # Multiplier for the total object cost
-  lane_center: 60.0             # Multiplier for lateral deviation from lane center
+  lane_center: 240.0             # Multiplier for lateral deviation from lane center
   lane_yaw: 30             # Multiplier for heading error relative to lane direction
   lane_occlusion: 50.0         # Multiplier for leaving the drivable road area
   opposite_lane: 0.5           # Multiplier for the oncoming traffic penalty
@@ -50,3 +50,13 @@ cost_lane_occlusion:
 
 cost_opposite_lane:
   penalty: 80.0              # Penalty for driving on the oncoming lane
+
+# Return-mode gate: once no blocker lies ahead, the opposite-lane penalty is
+# scaled by `multiplier` so lingering in the oncoming lane after a completed
+# overtake becomes far more expensive than returning to the original lane.
+cost_opposite_lane_return_mode:
+  multiplier: 5.0                     # Effective weight when clear: transition_weights.opposite_lane * multiplier * penalty
+  lookahead_m: 150.0                   # Blocker scan distance along the ego heading [m]
+  corridor_half_width_m: 5.5           # Lateral half-width of the ego forward corridor [m]
+  speed_margin_mps: 0.5                # Object qualifies as blocker if slower by more than this [m/s]
+  rear_hold_m: 6.0                    # Hysteresis: objects this far behind still block the return-mode gate [m]
