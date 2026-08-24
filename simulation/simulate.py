@@ -9,7 +9,7 @@ from core.types.road import Environment
 from core.types.vehicle import EgoStateStamped, EgoState
 from core.geometry import get_vector, get_signed_magnitude
 from core.dynamics import DynamicBicycleModel
-from prediction.predictivity import predict_motion_constant_velocity
+from components.predictors.constant_velocity.predictor import predict_motion_constant_velocity
 import numpy as np
 
 

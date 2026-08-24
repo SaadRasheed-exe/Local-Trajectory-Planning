@@ -30,20 +30,20 @@ from typing import Optional, Tuple
 import hydra
 from omegaconf import DictConfig, OmegaConf
 
-from collision.collision import (
+from components.collision.collision_queries import (
     build_lane_polygons,
     get_colliding_object_ids,
     get_distance_to_objects,
-    get_ego_lane_info,
     has_exited_lanes,
 )
+from core.road_queries import get_ego_lane_info
 from controllers.controllers import MPCController
 from core.types.perception import PredictedEnvironment
 from core.types.planning import PlanningRequest, Trajectory
 from core.types.road import Environment
 from core.types.vehicle import EgoStateStamped
-from planner.planner import plan
-from prediction.predictivity import predict_environment
+from components.planners.hybrid_a_star.search import plan
+from components.predictors.constant_velocity.predictor import predict_environment
 from simulation.simulate import Simulation
 from utils.helper import get_goal_region, get_nearest_lane_end_distance
 from visualization.visualizer import visualize_scene
@@ -111,7 +111,7 @@ def _build_goal_region(
     Anchor the rolling goal region relative to the ego pose.
 
     This is a local planner: the goal is always 'horizon seconds ahead on the
-    current lane' (see utils.helper.get_goal_region), never a fixed map
+    current lane' (see get_goal_region), never a fixed map
     coordinate. Called once per planning loop for the actual planning target
     and once per animation frame for the live display.
     """

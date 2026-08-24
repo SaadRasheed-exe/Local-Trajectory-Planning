@@ -1,7 +1,7 @@
 import math
 from core.types.vehicle import EgoStateStamped
 from shapely.geometry import Polygon
-from collision.collision import get_distance_to_objects
+from components.collision.collision_queries import get_distance_to_objects
 from core.types import *
 from omegaconf import DictConfig
 from core.geometry import get_bbox_corners, get_magnitude, get_signed_magnitude, get_x_y_yaw_from_state

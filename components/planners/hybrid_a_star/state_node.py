@@ -1,7 +1,7 @@
 from typing import Dict
 from core.types import *
 from anytree import NodeMixin
-from planner.motion_primitives import MotionPrimitive
+from components.planners.hybrid_a_star.primitives.motion_primitives import MotionPrimitive
 
 
 class StateNode(NodeMixin):

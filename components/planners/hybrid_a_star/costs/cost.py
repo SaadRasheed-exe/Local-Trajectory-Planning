@@ -1,9 +1,9 @@
 from typing import Dict, Tuple
 from core.types import *
-from planner.cost.transition_cost import *
-from planner.cost.dubins_path_planner import get_dubins_path_length
-from planner.motion_primitives import _get_max_steering_angle
-from collision.collision import get_ego_lane_info
+from components.planners.hybrid_a_star.costs.transition_cost import *
+from components.planners.hybrid_a_star.heuristics.dubins_path_planner import get_dubins_path_length
+from components.planners.hybrid_a_star.primitives.motion_primitives import _get_max_steering_angle
+from core.road_queries import get_ego_lane_info
 
 from math import atan2
 
@@ -14,7 +14,7 @@ from omegaconf import DictConfig
 
 from core.types.planning import PlanningRequest
 from core.types.vehicle import EgoStateStamped
-from planner.cost.transition_cost import (
+from components.planners.hybrid_a_star.costs.transition_cost import (
     cost_jerk,
     cost_acceleration,
     cost_target_speed_delta,
