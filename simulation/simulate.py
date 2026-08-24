@@ -29,8 +29,8 @@ class Simulation:
         self.env_noise_cfg = cfg.noise.environment
         self.bicycle_model = DynamicBicycleModel(self.ego_state.state, cfg.vehicle)
 
-        self.ego_history = [self.ego_state]
-        self.obj_history = [self.curr_env.objects]
+        self.ego_history = [copy.deepcopy(self.ego_state)]
+        self.obj_history = [copy.deepcopy(self.curr_env.objects)]
 
         # Guards ego_state / curr_env mutations (step) against concurrent
         # readers (planner thread, renderer) that deepcopy the state.
