@@ -45,7 +45,7 @@ from core.types.vehicle import EgoStateStamped
 from components.planners.hybrid_a_star.search import plan
 from components.predictors.constant_velocity.predictor import predict_environment
 from simulation.simulate import Simulation
-from utils.helper import get_goal_region, get_nearest_lane_end_distance
+from app.pipeline import get_goal_region, get_nearest_lane_end_distance
 from visualization.visualizer import visualize_scene
 
 

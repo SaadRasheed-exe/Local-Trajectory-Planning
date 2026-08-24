@@ -9,11 +9,11 @@ from core.dynamics import kinematic_bicycle
 import heapq
 import math
 from omegaconf import DictConfig, OmegaConf
-from utils.helper import convert_cfg_to_native
+from app.config import convert_cfg_to_native
 import time
 
 from core.geometry import get_magnitude, get_signed_magnitude
-from utils.helper import lane_blocked_ahead
+from core.road_queries import lane_blocked_ahead
 from components.planners.hybrid_a_star.costs.cost import calculate_node_cost, calculate_heuristic_cost, calculate_total_cost
 
 class IDProvider:

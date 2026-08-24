@@ -1,7 +1,8 @@
 """Pure lane-geometry queries over the static road model."""
-from math import atan2, cos, hypot, pi, sin
+from math import atan2, cos, hypot, pi, sin, sqrt
 from typing import List, Tuple
 
+from core.geometry import get_signed_magnitude
 from core.types.geometry import Vector2D
 from core.types.road import Lane
 from core.types.vehicle import EgoState, EgoStateStamped
@@ -203,3 +204,90 @@ def get_ego_lane_info(
         is_opposite, best_speed_limit = fb_opposite, fb_speed_limit
 
     return best_lane_id, best_dist, best_yaw_offset, occlusion_sum, is_opposite, best_speed_limit
+
+# --------------------------------------------------------------
+# Return-mode gate: blocking-query semantics over road + predictions
+# --------------------------------------------------------------
+
+def lane_blocked_ahead(
+    start_state: EgoStateStamped,
+    predicted_env,
+    veh_cfg,
+    lookahead_m: float = 150.0,
+    corridor_half_width_m: float = 4.0,
+    speed_margin_mps: float = 0.5,
+    rear_hold_m: float = 12.0,
+) -> bool:
+    """
+    True if any predicted traffic object blocks the ego's forward corridor.
+
+    A blocker must simultaneously:
+      - lie within the longitudinal window (-rear_hold_m, lookahead_m] along
+        the travel-direction lane axis. The extended rear window provides
+        hysteresis: a vehicle still alongside counts as a blocker even when
+        its center drifts just behind the perpendicular foot, so the
+        return-mode gate cannot flicker mid-overtake,
+      - sit within the lateral corridor around that axis
+        (|l| <= corridor_half_width_m),
+      - move slower than the ego along that axis by more than the margin
+        (oncoming traffic has negative forward speed and thus qualifies).
+
+    The reference frame is the travel-direction lane axis rather than the
+    ego's instantaneous heading, so a mid-overtake steering tilt cannot
+    rotate a truly-ahead vehicle out of the corridor. Evaluated once per
+    planning cycle; used to gate the opposite-lane return penalty so it
+    only engages once no blocker remains alongside or ahead.
+    """
+    st = start_state.state
+    ref_yaw = _travel_direction_yaw(st, predicted_env)
+    ref_x, ref_y = cos(ref_yaw), sin(ref_yaw)
+    ego_speed = get_signed_magnitude(st.velocity, ref_yaw)
+    threshold_speed = ego_speed - speed_margin_mps
+
+    for obj_states in predicted_env.objects.values():
+        # Judge blocking on the object's current position only. Iterating the
+        # full prediction trail instead makes a passed vehicle's projected
+        # tail (extending tens of meters down-road over the horizon) count as
+        # "ahead in corridor" indefinitely, so the gate could never settle.
+        stamped = min(
+            obj_states,
+            key=lambda o: abs(o.timestamp - start_state.timestamp),
+        )
+        obj = stamped.state
+        dx = obj.pos.x - st.pos.x
+        dy = obj.pos.y - st.pos.y
+        s = dx * ref_x + dy * ref_y
+        if not (-rear_hold_m < s <= lookahead_m):
+            continue
+        l = -dx * ref_y + dy * ref_x
+        if abs(l) > corridor_half_width_m:
+            continue
+        obj_forward_speed = obj.velocity.x * ref_x + obj.velocity.y * ref_y
+        if obj_forward_speed < threshold_speed:
+            return True
+    return False
+
+
+def _travel_direction_yaw(ego_state: EgoState, predicted_env) -> float:
+    """
+    Reference yaw for longitudinal/lateral gating queries: the representative
+    yaw of the first lane whose direction agrees with the ego's velocity,
+    falling back to the ego pose yaw when no lane matches.
+    """
+    vx, vy = ego_state.velocity.x, ego_state.velocity.y
+    if sqrt(vx * vx + vy * vy) < 1e-3:
+        return ego_state.yaw
+    vel_yaw = atan2(vy, vx)
+    for lane in getattr(predicted_env, "lanes", []) or []:
+        if lane.centerline and cos(lane_representative_yaw(lane) - vel_yaw) > 0.25:
+            return lane_representative_yaw(lane)
+    return ego_state.yaw
+
+
+def lane_representative_yaw(lane: Lane) -> float:
+    """Representative direction of a lane: yaw of its first centerline segment."""
+    p0, _ = lane.centerline[0]
+    p1, _ = lane.centerline[min(1, len(lane.centerline) - 1)]
+    return atan2(p1.y - p0.y, p1.x - p0.x)
+
+
